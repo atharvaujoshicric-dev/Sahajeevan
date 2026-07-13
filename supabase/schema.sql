@@ -7,7 +7,7 @@
 -- key or Edge Function is needed anywhere.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ----------------------------------------------------------------------------
 -- 1. APP_USERS  (every login: the one Super Admin + every sales login)
@@ -185,13 +185,13 @@ create or replace function public.bootstrap_admin(
 ) returns table(token uuid, id uuid, username text, full_name text, role text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_user public.app_users;
   v_token uuid;
 begin
-  if exists (select 1 from public.app_users where role = 'admin') then
+  if exists (select 1 from public.app_users au where au.role = 'admin') then
     raise exception 'An admin account already exists. Please log in instead.';
   end if;
   if p_username is null or length(trim(p_username)) < 3 then
@@ -202,7 +202,7 @@ begin
   end if;
 
   insert into public.app_users(username, password_hash, full_name, role, active)
-  values (lower(trim(p_username)), crypt(p_password, gen_salt('bf')), p_full_name, 'admin', true)
+  values (lower(trim(p_username)), extensions.crypt(p_password, extensions.gen_salt('bf')), p_full_name, 'admin', true)
   returning * into v_user;
 
   insert into public.app_sessions(user_id) values (v_user.id) returning app_sessions.token into v_token;
@@ -218,16 +218,16 @@ create or replace function public.login(
 ) returns table(token uuid, id uuid, username text, full_name text, role text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_user public.app_users;
   v_token uuid;
 begin
-  select * into v_user from public.app_users
-  where username = lower(trim(p_username)) and active = true;
+  select * into v_user from public.app_users au
+  where au.username = lower(trim(p_username)) and au.active = true;
 
-  if v_user is null or v_user.password_hash <> crypt(p_password, v_user.password_hash) then
+  if v_user is null or v_user.password_hash <> extensions.crypt(p_password, v_user.password_hash) then
     raise exception 'Invalid ID or password';
   end if;
 
@@ -287,7 +287,7 @@ create or replace function public.admin_create_user(
 ) returns public.app_users
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_caller public.app_users;
@@ -311,7 +311,7 @@ begin
   end if;
 
   insert into public.app_users(username, password_hash, full_name, role, active)
-  values (lower(trim(p_username)), crypt(p_password, gen_salt('bf')), p_full_name, p_role, true)
+  values (lower(trim(p_username)), extensions.crypt(p_password, extensions.gen_salt('bf')), p_full_name, p_role, true)
   returning * into v_new;
 
   insert into public.audit_log(action, performed_by, details)
@@ -376,7 +376,7 @@ create or replace function public.admin_reset_password(
 ) returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_caller public.app_users;
@@ -393,7 +393,7 @@ begin
   end if;
 
   update public.app_users
-    set password_hash = crypt(p_new_password, gen_salt('bf'))
+    set password_hash = extensions.crypt(p_new_password, extensions.gen_salt('bf'))
     where id = p_user_id;
 
   delete from public.app_sessions where user_id = p_user_id;
