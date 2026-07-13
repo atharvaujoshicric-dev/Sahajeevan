@@ -24,7 +24,8 @@ body {
 .view.active { display: block; }
 
 /* ---------------- LOGIN ---------------- */
-#view-login {
+#view-login,
+#view-bootstrap {
   min-height: 100vh;
   display: flex;
   align-items: center;
