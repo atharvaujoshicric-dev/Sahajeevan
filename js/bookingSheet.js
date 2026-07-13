@@ -17,7 +17,7 @@ function openBookingSheet(flat, booking) {
   }
 
   const fig = {
-    agreementValue: Number(booking.agreement_value),
+    agreementValue: Number(booking.effective_agreement_value),
     stampDuty: Number(booking.stamp_duty),
     registration: Number(booking.registration),
     gst: Number(booking.gst),
@@ -45,7 +45,8 @@ function openBookingSheet(flat, booking) {
 
   function renderCopy(label) {
     const paymentRows = PAYMENT_SLABS.map((row) => {
-      return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td></tr>`;
+      const amount = Math.round(fig.agreementValue * (row.percent / 100));
+      return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td><td class="amt">${formatINR(amount)}</td></tr>`;
     }).join("");
 
     const termsList = STANDARD_TERMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
@@ -92,7 +93,6 @@ function openBookingSheet(flat, booking) {
           <tr><td class="k">Registration</td><td>${formatINR(fig.registration)}</td>
               <td class="k">GST (5%)</td><td>${formatINR(fig.gst)}</td></tr>
           <tr><td class="k">Package Total</td><td colspan="3"><strong>${formatINR(fig.packageTotal)}</strong></td></tr>
-          ${booking.cc_included ? `<tr><td class="k">Cash Component</td><td colspan="3">${formatINR(booking.cc_amount)}</td></tr>` : ""}
         </table>
 
         ${signatureBlock()}
@@ -109,7 +109,7 @@ function openBookingSheet(flat, booking) {
 
         <h3>Payment Schedule (construction-linked, on Agreement Value)</h3>
         <table class="info-table payment-table">
-          <tr><th>Stage</th><th>Payment</th></tr>
+          <tr><th>Stage</th><th>Payment</th><th>Amount</th></tr>
           ${paymentRows}
         </table>
 
@@ -193,7 +193,7 @@ function openBookingSheet(flat, booking) {
         .info-table td.k { background: #f8fafc; color: #6b7280; width: 140px; }
 
         .payment-table th { background: #1e3a8a; color: white; text-align: left; }
-        .payment-table td.pct { text-align: right; white-space: nowrap; }
+        .payment-table td.pct, .payment-table td.amt { text-align: right; white-space: nowrap; }
 
         .terms-list { font-size: 10.5px; color: #374151; padding-left: 18px; margin: 4px 0 0; }
         .terms-list li { margin-bottom: 4px; }

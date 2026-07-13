@@ -1,7 +1,20 @@
 // Shared "flat detail" modal — used by both the sales view and the admin view.
-// isAdmin=true adds the CC toggle control and (if booked) a Cancel Booking button.
+// isAdmin=true adds the Furniture Cost toggle control and (if booked) a Cancel Booking button.
 
 let _detailFlat = null;
+
+function renderPaymentScheduleTable(agreementValue) {
+  const rows = PAYMENT_SLABS.map((row) => {
+    const amount = Math.round(Number(agreementValue) * (row.percent / 100));
+    return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td><td class="pct">${formatINR(amount)}</td></tr>`;
+  }).join("");
+  return `
+    <table class="info-table" id="fd-payment-schedule">
+      <tr><th>Stage</th><th>Payment</th><th>Amount</th></tr>
+      ${rows}
+    </table>
+  `;
+}
 
 async function openFlatDetail(flat, isAdmin) {
   _detailFlat = flat;
@@ -67,19 +80,23 @@ async function openFlatDetail(flat, isAdmin) {
       </div>
     </div>
 
+    <h4>Payment Schedule</h4>
+    <div id="fd-payment-schedule-wrap">${renderPaymentScheduleTable(fig.agreementValue)}</div>
+
     ${flat.cc_enabled ? `
       <div class="cc-box">
-        <strong>Cash Component enabled for this flat:</strong> ${formatINR(flat.cc_amount)}
+        <strong>Furniture Cost available for this flat:</strong> ${formatINR(flat.cc_amount)}
       </div>` : ""}
 
     ${isAdmin ? `
       <hr/>
-      <h4>Admin: Cash Component</h4>
+      <h4>Admin: Furniture Cost</h4>
       <div class="detail-grid">
-        <div><label><input type="checkbox" id="fd-cc-enabled" ${flat.cc_enabled ? "checked" : ""}/> Enable Cash Component</label></div>
+        <div><label><input type="checkbox" id="fd-cc-enabled" ${flat.cc_enabled ? "checked" : ""}/> Enable Furniture Cost</label></div>
         <div><label>Amount</label><input type="number" id="fd-cc-amount" value="${flat.cc_amount || 0}"/></div>
       </div>
-      <button class="btn secondary" id="fd-save-cc">Save Cash Component</button>
+      <p class="note">If opted at booking, this amount is deducted from the Agreement Value before Stamp Duty/GST are calculated. It is never shown on the booking sheet.</p>
+      <button class="btn secondary" id="fd-save-cc">Save Furniture Cost</button>
     ` : ""}
 
     ${isAdmin && canEditPricing ? `<button class="btn secondary" id="fd-save-pricing">Save Pricing Changes</button>` : ""}
@@ -93,7 +110,7 @@ async function openFlatDetail(flat, isAdmin) {
         <div><label>Email</label><div>${escapeHtml(booking.buyer_email || "-")}</div></div>
         <div><label>Booked On</label><div>${new Date(booking.booked_at).toLocaleString()}</div></div>
         <div><label>Package Paid</label><div>${formatINR(booking.package_total)}</div></div>
-        <div><label>Cash Component</label><div>${booking.cc_included ? formatINR(booking.cc_amount) : "Not included"}</div></div>
+        ${isAdmin ? `<div><label>Furniture Cost</label><div>${booking.cc_included ? formatINR(booking.cc_amount) : "Not opted"}</div></div>` : ""}
       </div>
       <button class="btn secondary" id="fd-print">Print Booking Sheet</button>
       ${isAdmin ? `<button class="btn danger" id="fd-cancel-booking">Cancel Booking</button>` : ""}
@@ -116,11 +133,16 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
     return checked ? Number(checked.value) : 0.07;
   }
 
+  function refreshPaymentSchedule(av) {
+    document.getElementById("fd-payment-schedule-wrap").innerHTML = renderPaymentScheduleTable(av);
+  }
+
   function refreshFromAV() {
     const fig = computeFigures(avInput.value, currentRate(), flat.registration);
     pkgInput.value = fig.packageTotal;
     document.getElementById("fd-stampduty").textContent = formatINR(fig.stampDuty);
     document.getElementById("fd-gst").textContent = formatINR(fig.gst);
+    refreshPaymentSchedule(fig.agreementValue);
   }
 
   function refreshFromPackage() {
@@ -129,6 +151,7 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
     const fig = computeFigures(av, currentRate(), flat.registration);
     document.getElementById("fd-stampduty").textContent = formatINR(fig.stampDuty);
     document.getElementById("fd-gst").textContent = formatINR(fig.gst);
+    refreshPaymentSchedule(av);
   }
 
   if (avInput) avInput.addEventListener("input", refreshFromAV);
@@ -168,7 +191,7 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
       if (error) {
         toast(error.message, "error");
       } else {
-        toast("Cash component saved");
+        toast("Furniture cost saved");
         closeModal("modal-flat-detail");
         window.dispatchEvent(new Event("flats:refresh"));
       }
@@ -247,8 +270,20 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
 function openBookingForm(flat, agreementValue, rate) {
   const body = document.getElementById("booking-form-body");
   const ccOption = flat.cc_enabled
-    ? `<label><input type="checkbox" id="bk-cc"/> Include Cash Component (${formatINR(flat.cc_amount)})</label>`
+    ? `<label><input type="checkbox" id="bk-cc"/> Include Furniture Cost (${formatINR(flat.cc_amount)}) — deducted from Agreement Value</label>`
     : "";
+
+  function figureNote(includeCc) {
+    const effectiveAv = agreementValue - (includeCc ? Number(flat.cc_amount) : 0);
+    const fig = computeFigures(effectiveAv, rate, flat.registration);
+    return `
+      <p class="note">
+        ${includeCc ? `Furniture Cost: ${formatINR(flat.cc_amount)} (deducted) · ` : ""}
+        Agreement Value: ${formatINR(fig.agreementValue)} · Stamp Duty Rate: ${(rate * 100).toFixed(0)}%<br/>
+        Stamp Duty: ${formatINR(fig.stampDuty)} · GST: ${formatINR(fig.gst)} · Package Total: ${formatINR(fig.packageTotal)}
+      </p>
+    `;
+  }
 
   body.innerHTML = `
     <div class="detail-grid">
@@ -257,9 +292,16 @@ function openBookingForm(flat, agreementValue, rate) {
       <div><label>Email</label><input type="email" id="bk-email"/></div>
     </div>
     ${ccOption}
-    <p class="note">Agreement Value: ${formatINR(agreementValue)} · Stamp Duty Rate: ${(rate * 100).toFixed(0)}%</p>
+    <div id="bk-figure-note">${figureNote(false)}</div>
     <button class="btn primary" id="bk-submit">Confirm Booking</button>
   `;
+
+  const ccCheckbox = document.getElementById("bk-cc");
+  if (ccCheckbox) {
+    ccCheckbox.addEventListener("change", () => {
+      document.getElementById("bk-figure-note").innerHTML = figureNote(ccCheckbox.checked);
+    });
+  }
 
   document.getElementById("bk-submit").addEventListener("click", async () => {
     const name = document.getElementById("bk-name").value.trim();

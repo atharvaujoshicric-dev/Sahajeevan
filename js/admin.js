@@ -55,9 +55,16 @@ function renderDashboard() {
   const bookable = adminFlats.filter((f) => f.is_selectable && f.status === "Available").length;
 
   const activeBookings = adminBookings.filter((b) => b.status === "Active");
+  const cancelledBookings = adminBookings.filter((b) => b.status === "Cancelled");
   const totalPackageBooked = activeBookings.reduce((s, b) => s + Number(b.package_total || 0), 0);
-  const totalAgreementBooked = activeBookings.reduce((s, b) => s + Number(b.agreement_value || 0), 0);
-  const totalCc = activeBookings.filter((b) => b.cc_included).reduce((s, b) => s + Number(b.cc_amount || 0), 0);
+  const totalAgreementBooked = activeBookings.reduce((s, b) => s + Number(b.effective_agreement_value || 0), 0);
+  const avgPackage = activeBookings.length ? totalPackageBooked / activeBookings.length : 0;
+
+  const potentialFlats = adminFlats.filter((f) => f.is_selectable && f.status === "Available");
+  const totalPotentialValue = potentialFlats.reduce((s, f) => s + Number(f.package_total || 0), 0);
+
+  const totalAttempts = adminBookings.length;
+  const cancellationRate = totalAttempts ? (cancelledBookings.length / totalAttempts) * 100 : 0;
 
   document.getElementById("kpi-total").textContent = total;
   document.getElementById("kpi-booked").textContent = booked;
@@ -65,12 +72,19 @@ function renderDashboard() {
   document.getElementById("kpi-bookable").textContent = bookable;
   document.getElementById("kpi-package-total").textContent = formatINR(totalPackageBooked);
   document.getElementById("kpi-agreement-total").textContent = formatINR(totalAgreementBooked);
-  document.getElementById("kpi-cc-total").textContent = formatINR(totalCc);
+  document.getElementById("kpi-potential-value").textContent = formatINR(totalPotentialValue);
+  document.getElementById("kpi-avg-package").textContent = formatINR(avgPackage);
+  document.getElementById("kpi-cancelled").textContent = `${cancelledBookings.length} (${cancellationRate.toFixed(0)}%)`;
 
   renderBreakdownTable("breakdown-by-tower", groupCount(adminFlats, (f) => f.tower));
   renderBreakdownTable("breakdown-by-config", groupCount(adminFlats, (f) => f.configuration_type));
   renderBreakdownTable("breakdown-by-owner", groupCount(adminFlats, (f) => f.ownership_detail || "Unknown"));
   renderBreakdownTable("breakdown-by-status", groupCount(adminFlats, (f) => f.status));
+  renderBreakdownTable("breakdown-by-salesperson", groupCount(activeBookings, (b) => b.booked_by_name || "Unknown"));
+  renderBreakdownTable(
+    "breakdown-by-month",
+    groupCount(activeBookings, (b) => new Date(b.booked_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }))
+  );
 }
 
 function groupCount(list, keyFn) {
@@ -117,6 +131,7 @@ function renderBookingsTable() {
         <td>${escapeHtml(b.flat_id)}</td>
         <td>${escapeHtml(b.buyer_name)}</td>
         <td>${escapeHtml(b.buyer_phone || "-")}</td>
+        <td>${escapeHtml(b.booked_by_name || "-")}</td>
         <td>${formatINR(b.package_total)}</td>
         <td>${b.cc_included ? formatINR(b.cc_amount) : "-"}</td>
         <td><span class="badge ${b.status === "Active" ? "available" : "booked"}">${b.status}</span></td>
@@ -289,4 +304,68 @@ document.getElementById("reset-confirm-btn").addEventListener("click", async () 
   renderDashboard();
   renderAdminSeatMap("");
   renderBookingsTable();
+});
+
+// ---------------------------------------------------------------- EXPORT AS EXCEL
+document.getElementById("export-excel-btn").addEventListener("click", () => {
+  try {
+    const flatsSheet = adminFlats.map((f) => ({
+      "Flat ID": f.id,
+      Tower: f.tower,
+      "Unit No": f.unit_no,
+      Floor: f.floor_number,
+      Configuration: f.configuration_type,
+      "Carpet Area": f.carpet_area,
+      "Saleable Area": f.saleable_area,
+      Status: f.status,
+      Ownership: f.ownership,
+      "Ownership Detail": f.ownership_detail,
+      "Bookable (WPC LLP / Unblocked)": f.is_selectable ? "Yes" : "No",
+      "Manually Unblocked": f.manually_unblocked ? "Yes" : "No",
+      Facing: f.facing,
+      "Floor Band": f.floor_band,
+      "Agreement Value": f.agreement_value,
+      "Stamp Duty Rate": f.stamp_duty_rate,
+      "Stamp Duty": f.stamp_duty,
+      Registration: f.registration,
+      GST: f.gst,
+      "Package Total": f.package_total,
+      "Furniture Cost Enabled": f.cc_enabled ? "Yes" : "No",
+      "Furniture Cost Amount": f.cc_amount,
+    }));
+
+    const bookingsSheet = adminBookings.map((b) => ({
+      "Flat ID": b.flat_id,
+      Tower: b.tower,
+      "Unit No": b.unit_no,
+      Configuration: b.configuration_type,
+      "Buyer Name": b.buyer_name,
+      Phone: b.buyer_phone,
+      Email: b.buyer_email,
+      "Agreement Value (as entered)": b.agreement_value,
+      "Furniture Cost Opted": b.cc_included ? "Yes" : "No",
+      "Furniture Cost Amount": b.cc_included ? b.cc_amount : 0,
+      "Effective Agreement Value": b.effective_agreement_value,
+      "Stamp Duty Rate": b.stamp_duty_rate,
+      "Stamp Duty": b.stamp_duty,
+      Registration: b.registration,
+      GST: b.gst,
+      "Package Total": b.package_total,
+      Status: b.status,
+      "Booked By": b.booked_by_name,
+      "Booked At": b.booked_at ? new Date(b.booked_at).toLocaleString() : "",
+      "Cancelled At": b.cancelled_at ? new Date(b.cancelled_at).toLocaleString() : "",
+      "Cancellation Reason": b.cancellation_reason || "",
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatsSheet), "Flats");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bookingsSheet), "Bookings");
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `sahjeevan-inventory-export-${stamp}.xlsx`);
+    toast("Excel file downloaded");
+  } catch (e) {
+    toast("Export failed: " + e.message, "error");
+  }
 });

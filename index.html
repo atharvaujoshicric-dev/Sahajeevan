@@ -4,7 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sahjeevan — Live Inventory System</title>
-<link rel="stylesheet" href="css/style.css?v=20260713e" />
+<link rel="stylesheet" href="css/style.css?v=20260713f" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -79,6 +80,7 @@
     <h2>Sahjeevan Inventory — Admin</h2>
     <div>
       <span class="who" id="admin-username"></span>
+      <button class="logout" id="export-excel-btn" style="background:#0d9488;color:white;border:none;">Export as Excel</button>
       <button class="logout" onclick="handleLogout()">Log out</button>
     </div>
   </div>
@@ -101,13 +103,19 @@
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-value" id="kpi-agreement-total">-</div><div class="kpi-label">Total Agreement Value Booked</div></div>
         <div class="kpi-card"><div class="kpi-value" id="kpi-package-total">-</div><div class="kpi-label">Total Package Value Booked</div></div>
-        <div class="kpi-card"><div class="kpi-value" id="kpi-cc-total">-</div><div class="kpi-label">Total Cash Component Booked</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-avg-package">-</div><div class="kpi-label">Average Package Value (Booked)</div></div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-value" id="kpi-potential-value">-</div><div class="kpi-label">Potential Value (Unsold, Bookable)</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-cancelled">-</div><div class="kpi-label">Cancelled Bookings (Rate)</div></div>
       </div>
       <div class="breakdown-grid">
         <div class="breakdown-card"><h4>By Tower</h4><div id="breakdown-by-tower"></div></div>
         <div class="breakdown-card"><h4>By Configuration</h4><div id="breakdown-by-config"></div></div>
         <div class="breakdown-card"><h4>By Ownership</h4><div id="breakdown-by-owner"></div></div>
         <div class="breakdown-card"><h4>By Status</h4><div id="breakdown-by-status"></div></div>
+        <div class="breakdown-card"><h4>Bookings by Sales Person</h4><div id="breakdown-by-salesperson"></div></div>
+        <div class="breakdown-card"><h4>Bookings by Month</h4><div id="breakdown-by-month"></div></div>
       </div>
     </div>
 
@@ -123,7 +131,7 @@
     <div class="admin-panel" id="admin-panel-bookings">
       <table>
         <thead>
-          <tr><th>Flat</th><th>Buyer</th><th>Phone</th><th>Package</th><th>Cash Component</th><th>Status</th><th>Date</th><th></th></tr>
+          <tr><th>Flat</th><th>Buyer</th><th>Phone</th><th>Sales Person</th><th>Package</th><th>Furniture Cost</th><th>Status</th><th>Date</th><th></th></tr>
         </thead>
         <tbody id="bookings-tbody"></tbody>
       </table>
@@ -207,15 +215,15 @@
   </div>
 </div>
 
-<script src="js/supabaseClient.js?v=20260713e"></script>
-<script src="js/utils.js?v=20260713e"></script>
-<script src="js/config.js?v=20260713e"></script>
-<script src="js/auth.js?v=20260713e"></script>
-<script src="js/seatmap.js?v=20260713e"></script>
-<script src="js/flatdetail.js?v=20260713e"></script>
-<script src="js/bookingSheet.js?v=20260713e"></script>
-<script src="js/sales.js?v=20260713e"></script>
-<script src="js/admin.js?v=20260713e"></script>
+<script src="js/supabaseClient.js?v=20260713f"></script>
+<script src="js/utils.js?v=20260713f"></script>
+<script src="js/config.js?v=20260713f"></script>
+<script src="js/auth.js?v=20260713f"></script>
+<script src="js/seatmap.js?v=20260713f"></script>
+<script src="js/flatdetail.js?v=20260713f"></script>
+<script src="js/bookingSheet.js?v=20260713f"></script>
+<script src="js/sales.js?v=20260713f"></script>
+<script src="js/admin.js?v=20260713f"></script>
 <script>
   document.querySelectorAll(".login-logo").forEach((img) => { img.src = PROJECT_LOGO_PATH; });
   document.querySelectorAll(".brand-rera-qr").forEach((img) => { img.src = PROJECT_RERA_QR_PATH; });

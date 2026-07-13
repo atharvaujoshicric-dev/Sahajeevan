@@ -95,14 +95,31 @@ create table if not exists public.bookings (
   agreement_value numeric not null,
   stamp_duty_rate numeric not null check (stamp_duty_rate in (0.06,0.07)),
   registration numeric not null default 30000,
-  stamp_duty numeric generated always as (round(agreement_value * stamp_duty_rate)) stored,
-  gst numeric generated always as (round(agreement_value * 0.05)) stored,
-  package_total numeric generated always as (
-    round(agreement_value + (agreement_value * stamp_duty_rate) + registration + (agreement_value * 0.05))
-  ) stored,
 
   cc_included boolean not null default false,
   cc_amount numeric not null default 0,
+
+  -- If Furniture Cost (cc) is opted into, it is deducted from the Agreement
+  -- Value before stamp duty/GST/package are calculated — it's paid outside
+  -- the registered sale value. "effective_agreement_value" is what's shown
+  -- as "Agreement Value" on the booking sheet and everywhere legally relevant.
+  effective_agreement_value numeric generated always as (
+    agreement_value - case when cc_included then cc_amount else 0 end
+  ) stored,
+  stamp_duty numeric generated always as (
+    round((agreement_value - case when cc_included then cc_amount else 0 end) * stamp_duty_rate)
+  ) stored,
+  gst numeric generated always as (
+    round((agreement_value - case when cc_included then cc_amount else 0 end) * 0.05)
+  ) stored,
+  package_total numeric generated always as (
+    round(
+      (agreement_value - case when cc_included then cc_amount else 0 end)
+      + ((agreement_value - case when cc_included then cc_amount else 0 end) * stamp_duty_rate)
+      + registration
+      + ((agreement_value - case when cc_included then cc_amount else 0 end) * 0.05)
+    )
+  ) stored,
 
   status text not null default 'Active' check (status in ('Active','Cancelled')),
   booked_by uuid references public.app_users(id),
@@ -464,10 +481,10 @@ $$;
 create or replace function public.get_bookings(p_token uuid)
 returns table (
   id uuid, flat_id text, buyer_name text, buyer_phone text, buyer_email text,
-  agreement_value numeric, stamp_duty_rate numeric, registration numeric,
+  agreement_value numeric, effective_agreement_value numeric, stamp_duty_rate numeric, registration numeric,
   stamp_duty numeric, gst numeric, package_total numeric,
   cc_included boolean, cc_amount numeric, status text,
-  booked_by uuid, booked_at timestamptz,
+  booked_by uuid, booked_by_name text, booked_at timestamptz,
   cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
   tower text, unit_no text, configuration_type text
 )
@@ -481,14 +498,15 @@ begin
   end if;
   return query
     select b.id, b.flat_id, b.buyer_name, b.buyer_phone, b.buyer_email,
-           b.agreement_value, b.stamp_duty_rate, b.registration,
+           b.agreement_value, b.effective_agreement_value, b.stamp_duty_rate, b.registration,
            b.stamp_duty, b.gst, b.package_total,
            b.cc_included, b.cc_amount, b.status,
-           b.booked_by, b.booked_at,
+           b.booked_by, coalesce(u.full_name, u.username, 'Unknown') as booked_by_name, b.booked_at,
            b.cancelled_by, b.cancelled_at, b.cancellation_reason,
            f.tower, f.unit_no, f.configuration_type
     from public.bookings b
     join public.flats f on f.id = b.flat_id
+    left join public.app_users u on u.id = b.booked_by
     order by b.booked_at desc;
 end;
 $$;
@@ -740,15 +758,16 @@ begin
     raise exception 'Confirmation text did not match';
   end if;
 
-  delete from public.bookings;
+  delete from public.bookings where true;
 
   update public.flats
     set status = 'Available',
         cc_enabled = false,
         cc_amount = 0,
-        updated_at = now();
+        updated_at = now()
+    where true;
 
-  delete from public.audit_log;
+  delete from public.audit_log where true;
 
   insert into public.audit_log(action, performed_by, details)
     values ('reset_system_data', v_caller.id, jsonb_build_object('at', now()));
