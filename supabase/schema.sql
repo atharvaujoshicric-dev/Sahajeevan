@@ -756,7 +756,6 @@ end;
 $$;
 
 grant execute on function public.admin_reset_system_data(uuid, text) to anon;
-grant execute on function public.admin_set_flat_unblock(uuid, text, boolean) to anon;
 
 -- Admin: unblock a non-WPC-LLP flat so sales can select/book it, or revoke
 -- that override again (only while it's not yet booked).
@@ -820,6 +819,7 @@ grant execute on function public.update_flat_pricing(uuid, text, numeric, numeri
 grant execute on function public.set_flat_cc(uuid, text, boolean, numeric) to anon;
 grant execute on function public.book_flat(uuid, text, text, text, text, numeric, numeric, boolean) to anon;
 grant execute on function public.cancel_booking(uuid, uuid, text) to anon;
+grant execute on function public.admin_set_flat_unblock(uuid, text, boolean) to anon;
 
 -- ============================================================================
 -- Done. Next: run seed_data.sql, then open the app. Since no admin exists
