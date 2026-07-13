@@ -12,13 +12,12 @@ const PROJECT_RERA_NUMBER = "MAHA-RERA Reg No. PR1260002600468";
 
 // Put your logo file at assets/logo.png (any image works; recommended ~300x120px, transparent background).
 // If the file is missing, the booking sheet just shows a placeholder box instead of a broken image.
+// This same file is also used as the large watermark on every page, and on the login screen.
 const PROJECT_LOGO_PATH = "assets/logo.png";
 
-// What the QR code encodes. Defaults to a simple text reference; point this at
-// a real verification URL once you have one (e.g. a page showing booking status).
-function qrContentForBooking(flat, booking) {
-  return `${PROJECT_NAME} BOOKING\nFlat: ${flat.id}\nBooking ID: ${booking.id}`;
-}
+// Your actual MAHA-RERA QR code image (the one RERA issued you) — put it at
+// assets/rera-qr.png. Used on the booking sheet and on the login screen.
+const PROJECT_RERA_QR_PATH = "assets/rera-qr.png";
 
 // Construction-linked payment schedule shown on the booking sheet.
 // "percent" is applied to the booking's Agreement Value (not the Package

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sahjeevan — Live Inventory System</title>
-<link rel="stylesheet" href="css/style.css?v=20260713c" />
+<link rel="stylesheet" href="css/style.css?v=20260713d" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -13,7 +13,12 @@
 
 <!-- ============================== FIRST-RUN: CREATE ADMIN ============================== -->
 <div id="view-bootstrap" class="view">
+  <div class="brand-corner">
+    <img class="brand-rera-qr" alt="RERA QR" onerror="this.style.display='none'" />
+    <div class="brand-rera-number"></div>
+  </div>
   <div class="login-card">
+    <img class="login-logo" alt="logo" onerror="this.style.display='none'" />
     <h1>Welcome</h1>
     <p class="subtitle">No admin account exists yet. Create the Super Admin login to get started.</p>
     <form id="bootstrap-form">
@@ -31,7 +36,12 @@
 
 <!-- ============================== LOGIN ============================== -->
 <div id="view-login" class="view">
+  <div class="brand-corner">
+    <img class="brand-rera-qr" alt="RERA QR" onerror="this.style.display='none'" />
+    <div class="brand-rera-number"></div>
+  </div>
   <div class="login-card">
+    <img class="login-logo" alt="logo" onerror="this.style.display='none'" />
     <h1>Sahjeevan Inventory</h1>
     <p class="subtitle">Sign in with the ID and password given to you by admin</p>
     <form id="login-form">
@@ -197,16 +207,20 @@
   </div>
 </div>
 
-<script src="js/supabaseClient.js?v=20260713c"></script>
-<script src="js/utils.js?v=20260713c"></script>
-<script src="js/config.js?v=20260713c"></script>
-<script src="js/auth.js?v=20260713c"></script>
-<script src="js/seatmap.js?v=20260713c"></script>
-<script src="js/flatdetail.js?v=20260713c"></script>
-<script src="js/bookingSheet.js?v=20260713c"></script>
-<script src="js/sales.js?v=20260713c"></script>
-<script src="js/admin.js?v=20260713c"></script>
+<script src="js/supabaseClient.js?v=20260713d"></script>
+<script src="js/utils.js?v=20260713d"></script>
+<script src="js/config.js?v=20260713d"></script>
+<script src="js/auth.js?v=20260713d"></script>
+<script src="js/seatmap.js?v=20260713d"></script>
+<script src="js/flatdetail.js?v=20260713d"></script>
+<script src="js/bookingSheet.js?v=20260713d"></script>
+<script src="js/sales.js?v=20260713d"></script>
+<script src="js/admin.js?v=20260713d"></script>
 <script>
+  document.querySelectorAll(".login-logo").forEach((img) => { img.src = PROJECT_LOGO_PATH; });
+  document.querySelectorAll(".brand-rera-qr").forEach((img) => { img.src = PROJECT_RERA_QR_PATH; });
+  document.querySelectorAll(".brand-rera-number").forEach((el) => { el.textContent = PROJECT_RERA_NUMBER; });
+
   document.getElementById("bootstrap-form").addEventListener("submit", handleBootstrap);
   document.getElementById("login-form").addEventListener("submit", handleLogin);
   initAuth();

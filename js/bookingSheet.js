@@ -25,7 +25,6 @@ function openBookingSheet(flat, booking) {
   };
 
   const bookedDate = new Date(booking.booked_at).toLocaleDateString("en-IN");
-  const qrText = qrContentForBooking(flat, booking);
 
   function signatureBlock() {
     return `
@@ -44,7 +43,7 @@ function openBookingSheet(flat, booking) {
     `;
   }
 
-  function renderCopy(label, qrId) {
+  function renderCopy(label) {
     const paymentRows = PAYMENT_SLABS.map((row) => {
       return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td></tr>`;
     }).join("");
@@ -62,7 +61,7 @@ function openBookingSheet(flat, booking) {
             <div class="paddr">${escapeHtml(PROJECT_ADDRESS_LINE2)}</div>
           </div>
           <div class="rera-block">
-            <div id="${qrId}" class="qr"></div>
+            <img src="${PROJECT_RERA_QR_PATH}" class="qr" onerror="this.style.display='none'" />
             <div class="rera-no">${escapeHtml(PROJECT_RERA_NUMBER)}</div>
           </div>
         </div>
@@ -130,7 +129,6 @@ function openBookingSheet(flat, booking) {
     <head>
       <meta charset="UTF-8" />
       <title>Booking Sheet — ${escapeHtml(flat.id)}</title>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
       <style>
         @page { size: A4; margin: 14mm 12mm; }
         * { box-sizing: border-box; }
@@ -172,7 +170,7 @@ function openBookingSheet(flat, booking) {
         .paddr { font-size: 12px; color: #6b7280; margin-top: 2px; }
         .rera-block { text-align: right; font-size: 11px; display: flex; flex-direction: column; align-items: flex-end; }
         .rera-no { margin-top: 6px; }
-        .qr { display: inline-block; }
+        .qr { display: inline-block; width: 80px; height: 80px; object-fit: contain; }
 
         .running-header {
           display: flex;
@@ -212,16 +210,8 @@ function openBookingSheet(flat, booking) {
     </head>
     <body>
       <div class="print-bar"><button onclick="window.print()">Print / Save as PDF</button></div>
-      ${renderCopy("SALES COPY", "qr-sales")}
-      ${renderCopy("CUSTOMER COPY", "qr-customer")}
-      <script>
-        window.addEventListener("load", function () {
-          try {
-            new QRCode(document.getElementById("qr-sales"), { text: ${JSON.stringify(qrText)}, width: 72, height: 72 });
-            new QRCode(document.getElementById("qr-customer"), { text: ${JSON.stringify(qrText)}, width: 72, height: 72 });
-          } catch (e) { console.error("QR render failed", e); }
-        });
-      </script>
+      ${renderCopy("SALES COPY")}
+      ${renderCopy("CUSTOMER COPY")}
     </body>
     </html>
   `);

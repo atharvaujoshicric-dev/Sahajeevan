@@ -38,6 +38,12 @@ body {
   width: 340px;
 }
 .login-card h1 { font-size: 20px; margin: 0 0 4px; }
+.login-logo { display: block; max-height: 64px; max-width: 220px; object-fit: contain; margin: 0 auto 14px; }
+.brand-corner {
+  position: fixed; top: 20px; right: 24px; text-align: right; font-size: 10px; color: var(--muted);
+}
+.brand-corner .brand-rera-qr { width: 76px; height: 76px; object-fit: contain; display: block; margin: 0 0 6px auto; }
+.brand-corner .brand-rera-number { max-width: 160px; line-height: 1.4; }
 .login-card p.subtitle { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
 .login-card label { display:block; font-size: 13px; margin-bottom: 4px; color: var(--muted); }
 .login-card input {
