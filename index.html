@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sahjeevan — Live Inventory System</title>
+<link rel="stylesheet" href="css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- ============================== LOGIN ============================== -->
+<div id="view-login" class="view active">
+  <div class="login-card">
+    <h1>Sahjeevan Inventory</h1>
+    <p class="subtitle">Sign in with the ID and password given to you by admin</p>
+    <form id="login-form">
+      <label>ID</label>
+      <input type="text" id="login-username" autocomplete="username" required />
+      <label>Password</label>
+      <input type="password" id="login-password" autocomplete="current-password" required />
+      <div class="error-text" id="login-error"></div>
+      <button type="submit" id="login-btn">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============================== SALES VIEW ============================== -->
+<div id="view-sales" class="view">
+  <div class="topbar">
+    <h2>Sahjeevan Inventory — Sales</h2>
+    <div>
+      <span class="who" id="sales-username"></span>
+      <button class="logout" onclick="handleLogout()">Log out</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="search-row">
+      <input type="text" id="sales-search" placeholder="Search flat no. e.g. A-101" />
+      <span class="count-pill" id="sales-count"></span>
+    </div>
+    <div id="sales-seatmap" class="seatmap"></div>
+  </div>
+</div>
+
+<!-- ============================== ADMIN VIEW ============================== -->
+<div id="view-admin" class="view">
+  <div class="topbar">
+    <h2>Sahjeevan Inventory — Admin</h2>
+    <div>
+      <span class="who" id="admin-username"></span>
+      <button class="logout" onclick="handleLogout()">Log out</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="tabs">
+      <button class="admin-tab active" data-tab="dashboard">Dashboard</button>
+      <button class="admin-tab" data-tab="inventory">Inventory</button>
+      <button class="admin-tab" data-tab="bookings">Bookings</button>
+      <button class="admin-tab" data-tab="users">Users</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="admin-panel active" id="admin-panel-dashboard">
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-value" id="kpi-total">-</div><div class="kpi-label">Total Flats</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-available">-</div><div class="kpi-label">Available</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-bookable">-</div><div class="kpi-label">Bookable Now (WPC LLP)</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-booked">-</div><div class="kpi-label">Booked</div></div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-value" id="kpi-agreement-total">-</div><div class="kpi-label">Total Agreement Value Booked</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-package-total">-</div><div class="kpi-label">Total Package Value Booked</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-cc-total">-</div><div class="kpi-label">Total Cash Component Booked</div></div>
+      </div>
+      <div class="breakdown-grid">
+        <div class="breakdown-card"><h4>By Tower</h4><div id="breakdown-by-tower"></div></div>
+        <div class="breakdown-card"><h4>By Configuration</h4><div id="breakdown-by-config"></div></div>
+        <div class="breakdown-card"><h4>By Ownership</h4><div id="breakdown-by-owner"></div></div>
+        <div class="breakdown-card"><h4>By Status</h4><div id="breakdown-by-status"></div></div>
+      </div>
+    </div>
+
+    <!-- INVENTORY -->
+    <div class="admin-panel" id="admin-panel-inventory">
+      <div class="search-row">
+        <input type="text" id="admin-search" placeholder="Search flat no. e.g. A-101" />
+      </div>
+      <div id="admin-seatmap" class="seatmap"></div>
+    </div>
+
+    <!-- BOOKINGS -->
+    <div class="admin-panel" id="admin-panel-bookings">
+      <table>
+        <thead>
+          <tr><th>Flat</th><th>Buyer</th><th>Phone</th><th>Package</th><th>Cash Component</th><th>Status</th><th>Date</th><th></th></tr>
+        </thead>
+        <tbody id="bookings-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- USERS -->
+    <div class="admin-panel" id="admin-panel-users">
+      <div style="display:flex; gap:24px; flex-wrap: wrap;">
+        <div class="form-card">
+          <h4>Create New Login</h4>
+          <form id="create-user-form">
+            <label>ID (username)</label>
+            <input type="text" id="new-username" required />
+            <label>Full Name</label>
+            <input type="text" id="new-fullname" />
+            <label>Password</label>
+            <input type="text" id="new-password" required minlength="6" />
+            <label>Role</label>
+            <select id="new-role">
+              <option value="sales">Sales</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="btn primary" type="submit">Create Login</button>
+          </form>
+        </div>
+        <div style="flex: 2; min-width: 320px;">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== SHARED MODALS ============================== -->
+<div class="modal-backdrop" id="modal-flat-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="flat-detail-title">Flat</h3>
+      <button class="modal-close" onclick="closeModal('modal-flat-detail')">&times;</button>
+    </div>
+    <div id="flat-detail-body"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-booking-form">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Confirm Booking</h3>
+      <button class="modal-close" onclick="closeModal('modal-booking-form')">&times;</button>
+    </div>
+    <div id="booking-form-body"></div>
+  </div>
+</div>
+
+<script src="js/supabaseClient.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/seatmap.js"></script>
+<script src="js/flatdetail.js"></script>
+<script src="js/sales.js"></script>
+<script src="js/admin.js"></script>
+<script>
+  document.getElementById("login-form").addEventListener("submit", handleLogin);
+  initAuth();
+</script>
+</body>
+</html>
