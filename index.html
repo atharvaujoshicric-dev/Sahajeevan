@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sahjeevan — Live Inventory System</title>
-<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/style.css?v=20260713c" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -146,6 +146,13 @@
           </table>
         </div>
       </div>
+
+      <hr/>
+      <div class="danger-zone">
+        <h4>Danger Zone</h4>
+        <p class="note">Resets all bookings and returns every flat to Available. Logins are not affected. This cannot be undone.</p>
+        <button class="btn danger" id="open-reset-btn">Reset System Data</button>
+      </div>
     </div>
   </div>
 </div>
@@ -171,13 +178,34 @@
   </div>
 </div>
 
-<script src="js/supabaseClient.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/seatmap.js"></script>
-<script src="js/flatdetail.js"></script>
-<script src="js/sales.js"></script>
-<script src="js/admin.js"></script>
+<div class="modal-backdrop" id="modal-reset-confirm">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Reset System Data</h3>
+      <button class="modal-close" onclick="closeModal('modal-reset-confirm')">&times;</button>
+    </div>
+    <p class="note">
+      This will permanently delete <strong>all bookings</strong> and return <strong>every flat</strong> to Available.
+      Cash Component flags will be cleared. Logins are not affected. This cannot be undone.
+    </p>
+    <label style="display:block; font-size:13px; color:#6b7280; margin-top:10px;">
+      Type <strong>RESET</strong> to confirm
+    </label>
+    <input type="text" id="reset-confirm-input" style="width:100%; padding:9px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-top:6px;" />
+    <div class="error-text" id="reset-confirm-error"></div>
+    <button class="btn danger" id="reset-confirm-btn">Permanently Reset</button>
+  </div>
+</div>
+
+<script src="js/supabaseClient.js?v=20260713c"></script>
+<script src="js/utils.js?v=20260713c"></script>
+<script src="js/config.js?v=20260713c"></script>
+<script src="js/auth.js?v=20260713c"></script>
+<script src="js/seatmap.js?v=20260713c"></script>
+<script src="js/flatdetail.js?v=20260713c"></script>
+<script src="js/bookingSheet.js?v=20260713c"></script>
+<script src="js/sales.js?v=20260713c"></script>
+<script src="js/admin.js?v=20260713c"></script>
 <script>
   document.getElementById("bootstrap-form").addEventListener("submit", handleBootstrap);
   document.getElementById("login-form").addEventListener("submit", handleLogin);

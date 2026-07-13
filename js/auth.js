@@ -28,13 +28,13 @@ async function initAuth() {
 async function showLoginOrBootstrap() {
   const { data: exists, error } = await sb.rpc("admin_exists");
   if (error) {
-    toast(error.message, "error");
-  }
-  if (exists === false) {
+    toast("Could not reach the database: " + error.message, "error");
+    // Safe default: bootstrap_admin refuses on its own if an admin already
+    // exists, so this never lets someone create a second admin by accident.
     showView("bootstrap");
-  } else {
-    showView("login");
+    return;
   }
+  showView(exists ? "login" : "bootstrap");
 }
 
 function routeToDashboard() {
@@ -90,7 +90,7 @@ async function handleLogin(e) {
   btn.textContent = "Sign in";
 
   if (error) {
-    errEl.textContent = "Invalid ID or password.";
+    errEl.textContent = error.message || "Invalid ID or password.";
     return;
   }
 
@@ -112,6 +112,11 @@ async function handleLogout() {
 }
 
 function showView(name) {
-  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-  document.getElementById("view-" + name).classList.add("active");
+  document.querySelectorAll(".view").forEach((v) => {
+    v.classList.remove("active");
+    v.style.display = "none"; // belt-and-braces: don't rely on CSS alone
+  });
+  const target = document.getElementById("view-" + name);
+  target.classList.add("active");
+  target.style.display = "block";
 }

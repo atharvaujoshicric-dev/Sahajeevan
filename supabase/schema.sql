@@ -71,8 +71,12 @@ create table if not exists public.flats (
   cc_enabled boolean not null default false,
   cc_amount numeric not null default 0,
 
-  -- Only WPC LLP flats are bookable for now (all flats are still visible)
-  is_selectable boolean generated always as (ownership_detail = 'WPC LLP') stored,
+  -- Only WPC LLP flats are bookable by default. Admin can manually unblock
+  -- any other flat (and revoke that override again, as long as it's not booked).
+  manually_unblocked boolean not null default false,
+  is_selectable boolean generated always as (
+    ownership_detail = 'WPC LLP' or manually_unblocked
+  ) stored,
 
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
@@ -712,6 +716,86 @@ begin
             jsonb_build_object('booking_id', p_booking_id, 'reason', p_reason));
 
   return v_booking;
+end;
+$$;
+
+-- Wipes all bookings and returns every flat to Available, with CC cleared.
+-- Does NOT touch logins (app_users) — only transactional inventory data.
+create or replace function public.admin_reset_system_data(
+  p_token uuid,
+  p_confirm text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Only admin can reset system data';
+  end if;
+  if p_confirm <> 'RESET' then
+    raise exception 'Confirmation text did not match';
+  end if;
+
+  delete from public.bookings;
+
+  update public.flats
+    set status = 'Available',
+        cc_enabled = false,
+        cc_amount = 0,
+        updated_at = now();
+
+  delete from public.audit_log;
+
+  insert into public.audit_log(action, performed_by, details)
+    values ('reset_system_data', v_caller.id, jsonb_build_object('at', now()));
+end;
+$$;
+
+grant execute on function public.admin_reset_system_data(uuid, text) to anon;
+grant execute on function public.admin_set_flat_unblock(uuid, text, boolean) to anon;
+
+-- Admin: unblock a non-WPC-LLP flat so sales can select/book it, or revoke
+-- that override again (only while it's not yet booked).
+create or replace function public.admin_set_flat_unblock(
+  p_token uuid,
+  p_flat_id text,
+  p_unblock boolean
+) returns public.flats
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+  v_flat public.flats;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Only admin can unblock or revoke a flat';
+  end if;
+
+  select * into v_flat from public.flats where id = p_flat_id for update;
+  if v_flat is null then
+    raise exception 'Flat not found';
+  end if;
+
+  if p_unblock = false and v_flat.status = 'Booked' then
+    raise exception 'Cannot revoke — this flat is already booked';
+  end if;
+
+  update public.flats
+    set manually_unblocked = p_unblock, updated_at = now()
+    where id = p_flat_id
+    returning * into v_flat;
+
+  insert into public.audit_log(flat_id, action, performed_by, details)
+    values (p_flat_id, 'set_unblock', v_caller.id, jsonb_build_object('unblock', p_unblock));
+
+  return v_flat;
 end;
 $$;
 

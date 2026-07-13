@@ -59,6 +59,7 @@ function renderSeatMap(container, flats, onSelect) {
   legend.className = "legend";
   legend.innerHTML = `
     <span><i class="dot available"></i> Available (bookable)</span>
+    <span><i class="dot unblocked"></i> Admin-unblocked (bookable)</span>
     <span><i class="dot other-owner"></i> Available (not yet bookable)</span>
     <span><i class="dot booked"></i> Booked</span>
   `;
@@ -68,7 +69,9 @@ function renderSeatMap(container, flats, onSelect) {
 function seatClass(flat) {
   if (flat.status === "Booked") return "booked";
   if (flat.status === "Blocked") return "blocked";
-  if (flat.is_selectable) return "available";
+  if (flat.is_selectable) {
+    return flat.ownership_detail === "WPC LLP" ? "available" : "unblocked";
+  }
   return "other-owner";
 }
 

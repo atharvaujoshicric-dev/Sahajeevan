@@ -22,11 +22,18 @@ There is **no Supabase Auth** in this build and **no service_role key anywhere**
 
 ## 2. Supabase setup
 
-1. Create a project at https://supabase.com (note your Project URL and anon key from **Settings → API**).
-2. Open **SQL Editor → New query**, paste in the entire contents of `supabase/schema.sql`, and run it. This creates all tables, locks them down, and creates all the functions the app uses.
-3. Then run `supabase/seed_data.sql` the same way — this loads all 126 flats from your sheet (Ownership Detail values have been cleaned/normalized to just `WPC LLP`, `DEVKAR`, `J & G NIMHAN`).
+**Always use this exact sequence, in order:**
+1. `supabase/full_rebuild.sql` — drops every table/function this app has ever created, under any signature it's ever had. Safe to run even on a brand-new project (everything is `if exists`).
+2. `supabase/schema.sql` — creates everything fresh, with every fix included.
+3. `supabase/seed_data.sql` — loads all 126 flats.
 
-That's it on the Supabase side — no Edge Function, no manual user creation, no service-role key to configure.
+Then reload the app — you'll land on "Create Admin Account" since it's a clean slate.
+
+**Why always start with the rebuild, even the first time?** Earlier iterations of this schema (before you had this version) used Supabase Auth and a different table (`profiles`). If your project ever ran an older version of the schema, some tables/functions can be left over with slightly different definitions than the current ones — and that mismatch is exactly what caused the `_fkey` errors you saw. Running `full_rebuild.sql` first guarantees there's nothing old left to conflict with, regardless of what you've run before. The `fix_ambiguous_columns.sql` file from earlier is now obsolete — everything it did is already included in `schema.sql`, so you don't need it anymore.
+
+## 2a. Unblocking a non-WPC-LLP flat
+
+Only WPC LLP flats are bookable by default. From a flat's detail screen, admin now sees an **"Unblock for booking"** button for any other flat — clicking it lets sales select and book that flat too. Admin can **Revoke** that override again at any time, as long as the flat hasn't already been booked (revoking a booked flat isn't allowed, since that would leave an active booking on a flat sales could no longer normally touch).
 
 ---
 
@@ -60,11 +67,30 @@ For each flat: `Package Total = Agreement Value + Stamp Duty + Registration (₹
 
 ## 5. About the booking-sheet PDF
 
-You mentioned you'll share the exact PDF layout separately. For now, the booking detail screen has a "Print Booking Sheet" button that uses the browser's print dialog as a placeholder. Once you share the format, I'll build a proper generated PDF (matching your letterhead/layout) that pulls the live booking data automatically.
+Done — click **"Print Booking Sheet"** on a booked flat's detail screen. It opens a new tab with a print-ready sheet: your project letterhead (logo top-left, RERA number + QR code top-right), full buyer/flat/pricing details, and **two copies** — a **Sales Copy** and a **Customer Copy** — each ending in signature lines for both the customer and the sales person (with space for name and date). Use the "Print / Save as PDF" button at the top (hidden when actually printing) — in the browser's print dialog, choose "Save as PDF" to get a PDF file, or print directly.
+
+**Three things you need to fill in yourself** (in `js/config.js`) — I didn't invent these since they end up on a legal-facing document:
+- `PROJECT_LOGO_PATH` — defaults to `assets/logo.png`. Drop your real logo file at `assets/logo.png` (a placeholder note is already in that folder).
+- `PROJECT_RERA_NUMBER` — currently a placeholder, replace with your actual RERA registration number.
+- `PROJECT_ADDRESS` — I filled this in from the address on your Parking Sheet ("S. No. 254, Sus, Mulshi, Pune") — double check it's correct/complete.
+
+The QR code currently just encodes a simple text reference (project name, flat ID, booking ID) — if you'd like it to link to an actual verification page instead, update the `qrContentForBooking()` function in `js/config.js`.
 
 ---
 
-## 6. A few things worth knowing
+## 6. If you ever see two screens overlapping (e.g. login + dashboard at once)
+
+This happens if the browser (or GitHub Pages' CDN) is serving a **mix of old and new files** — for example an old `index.html` cached alongside a newer `js/auth.js`. To avoid this:
+- Always replace **all** files together when you update, not just one or two.
+- Do a hard refresh after deploying (Ctrl+Shift+R / Cmd+Shift+R), or open in a private/incognito window.
+- The asset links in `index.html` already include a `?v=...` cache-busting parameter — bump that version string any time you redeploy changed files, so browsers are forced to fetch the new versions instead of a cached copy.
+
+## 7. Resetting system data
+
+Admin → **Users tab → Danger Zone → Reset System Data**. This permanently deletes all bookings, returns every flat to Available, and clears any Cash Component flags — logins are untouched. You'll be asked to type `RESET` to confirm before anything happens; there's no way to undo it afterward.
+
+## 8. A few things worth knowing
+
 
 - All 126 flats show in the seat map; flats not owned by "WPC LLP" are visible but greyed out and cannot be selected/booked — enforced both in the UI and inside the database functions, so it can't be bypassed by editing the page.
 - The original sheet's Stamp Duty/GST/Package figures were recomputed slightly differently by row (small rounding differences). This system seeds each flat's **Agreement Value** from your sheet and then always derives Stamp Duty/GST/Package **live** from the formula above — so the first time you open a flat, the shown figures may differ by a rounding rupee or two from the original sheet, then stay perfectly consistent from then on.

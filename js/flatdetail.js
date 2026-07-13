@@ -34,6 +34,16 @@ async function openFlatDetail(flat, isAdmin) {
 
     ${!flat.is_selectable ? `<p class="note">Only flats with Ownership Detail "WPC LLP" can be booked right now. This flat belongs to ${escapeHtml(flat.ownership_detail || "another party")}.</p>` : ""}
 
+    ${isAdmin && flat.ownership_detail !== "WPC LLP" ? `
+      <div class="note" style="background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a;">
+        <strong>Admin override:</strong> this flat's owner is "${escapeHtml(flat.ownership_detail || "unknown")}", not WPC LLP.
+        ${flat.manually_unblocked
+          ? `It is currently <strong>unblocked</strong> — sales can select and book it.
+             <button class="btn secondary small" id="fd-revoke-unblock" style="margin-left:8px;">Revoke</button>`
+          : `<button class="btn secondary small" id="fd-unblock" style="margin-left:8px;">Unblock for booking</button>`}
+      </div>
+    ` : ""}
+
     <hr/>
     <h4>Pricing</h4>
     <div class="detail-grid">
@@ -195,8 +205,41 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
   const printBtn = document.getElementById("fd-print");
   if (printBtn) {
     printBtn.addEventListener("click", () => {
-      window.print();
-      toast("A formatted booking-sheet PDF template will be added here later.");
+      openBookingSheet(flat, booking);
+    });
+  }
+
+  const unblockBtn = document.getElementById("fd-unblock");
+  if (unblockBtn) {
+    unblockBtn.addEventListener("click", async () => {
+      const { error } = await sb.rpc("admin_set_flat_unblock", {
+        p_token: currentToken,
+        p_flat_id: flat.id,
+        p_unblock: true,
+      });
+      if (error) toast(error.message, "error");
+      else {
+        toast("Flat unblocked — sales can now book it.");
+        closeModal("modal-flat-detail");
+        window.dispatchEvent(new Event("flats:refresh"));
+      }
+    });
+  }
+
+  const revokeBtn = document.getElementById("fd-revoke-unblock");
+  if (revokeBtn) {
+    revokeBtn.addEventListener("click", async () => {
+      const { error } = await sb.rpc("admin_set_flat_unblock", {
+        p_token: currentToken,
+        p_flat_id: flat.id,
+        p_unblock: false,
+      });
+      if (error) toast(error.message, "error");
+      else {
+        toast("Unblock revoked.");
+        closeModal("modal-flat-detail");
+        window.dispatchEvent(new Event("flats:refresh"));
+      }
     });
   }
 }

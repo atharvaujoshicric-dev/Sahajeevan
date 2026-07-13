@@ -260,3 +260,33 @@ document.getElementById("create-user-form").addEventListener("submit", async (e)
     loadUsers();
   }
 });
+
+// ---------------------------------------------------------------- DANGER ZONE
+document.getElementById("open-reset-btn").addEventListener("click", () => {
+  document.getElementById("reset-confirm-input").value = "";
+  document.getElementById("reset-confirm-error").textContent = "";
+  openModal("modal-reset-confirm");
+});
+
+document.getElementById("reset-confirm-btn").addEventListener("click", async () => {
+  const typed = document.getElementById("reset-confirm-input").value.trim();
+  const errEl = document.getElementById("reset-confirm-error");
+  if (typed !== "RESET") {
+    errEl.textContent = 'Please type RESET exactly to confirm.';
+    return;
+  }
+  const { error } = await sb.rpc("admin_reset_system_data", {
+    p_token: currentToken,
+    p_confirm: typed,
+  });
+  if (error) {
+    errEl.textContent = error.message;
+    return;
+  }
+  toast("System data reset — all flats are Available again.");
+  closeModal("modal-reset-confirm");
+  await refreshAdminData();
+  renderDashboard();
+  renderAdminSeatMap("");
+  renderBookingsTable();
+});
