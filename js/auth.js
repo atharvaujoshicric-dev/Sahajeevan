@@ -118,5 +118,5 @@ function showView(name) {
   });
   const target = document.getElementById("view-" + name);
   target.classList.add("active");
-  target.style.display = "block";
+  target.style.display = ""; // let the stylesheet decide (some views need flex, not block)
 }
