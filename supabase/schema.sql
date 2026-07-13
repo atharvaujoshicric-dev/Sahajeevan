@@ -1,60 +1,41 @@
 -- ============================================================================
--- SAHJEEVAN INVENTORY SYSTEM — DATABASE SCHEMA
+-- SAHJEEVAN INVENTORY SYSTEM — DATABASE SCHEMA (no Supabase Auth, no Edge Functions)
 -- Run this entire file once in Supabase SQL Editor (Project > SQL Editor > New query)
+--
+-- Everything (logins, sessions, password resets) is handled by this app's own
+-- tables + functions using pgcrypto for password hashing — no service_role
+-- key or Edge Function is needed anywhere.
 -- ============================================================================
 
+create extension if not exists pgcrypto;
+
 -- ----------------------------------------------------------------------------
--- 1. PROFILES  (extends Supabase auth.users with a role + human-friendly username)
+-- 1. APP_USERS  (every login: the one Super Admin + every sales login)
 -- ----------------------------------------------------------------------------
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
   username text unique not null,
+  password_hash text not null,
   full_name text,
   role text not null check (role in ('admin','sales')),
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
 
-alter table public.profiles enable row level security;
-
--- helper: is the currently logged in user an admin?
-create or replace function public.is_admin()
-returns boolean
-language sql
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and role = 'admin' and active = true
-  );
-$$;
-
--- helper: is the currently logged in user an active sales or admin user?
-create or replace function public.is_active_user()
-returns boolean
-language sql
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and active = true
-  );
-$$;
-
-create policy "profiles: user can read own row" on public.profiles
-  for select using (id = auth.uid());
-
-create policy "profiles: admin can read all rows" on public.profiles
-  for select using (public.is_admin());
-
--- No insert/update/delete policies are granted to normal clients.
--- All user creation / password resets / deactivation happen through the
--- admin-users Edge Function using the service role key (see /supabase/functions).
+-- ----------------------------------------------------------------------------
+-- 2. APP_SESSIONS  (a session token is issued on login, stored in the
+--    browser's localStorage, and sent back as a parameter on every RPC call
+--    that needs to know who's calling)
+-- ----------------------------------------------------------------------------
+create table if not exists public.app_sessions (
+  token uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 days')
+);
 
 -- ----------------------------------------------------------------------------
--- 2. FLATS  (imported from the live inventory excel sheet)
+-- 3. FLATS  (imported from the live inventory excel sheet)
 -- ----------------------------------------------------------------------------
 create table if not exists public.flats (
   id text primary key,                       -- e.g. 'A-101'
@@ -97,17 +78,8 @@ create table if not exists public.flats (
   created_at timestamptz not null default now()
 );
 
-alter table public.flats enable row level security;
-
-create policy "flats: any active user can read all flats" on public.flats
-  for select using (public.is_active_user());
-
--- No direct insert/update/delete from clients — all writes go through the
--- RPC functions below so business rules (WPC-LLP-only, status checks,
--- role checks) are always enforced server-side.
-
 -- ----------------------------------------------------------------------------
--- 3. BOOKINGS
+-- 4. BOOKINGS
 -- ----------------------------------------------------------------------------
 create table if not exists public.bookings (
   id uuid primary key default gen_random_uuid(),
@@ -129,44 +101,419 @@ create table if not exists public.bookings (
   cc_amount numeric not null default 0,
 
   status text not null default 'Active' check (status in ('Active','Cancelled')),
-  booked_by uuid references public.profiles(id),
+  booked_by uuid references public.app_users(id),
   booked_at timestamptz not null default now(),
 
-  cancelled_by uuid references public.profiles(id),
+  cancelled_by uuid references public.app_users(id),
   cancelled_at timestamptz,
   cancellation_reason text
 );
 
-alter table public.bookings enable row level security;
-
-create policy "bookings: any active user can read all bookings" on public.bookings
-  for select using (public.is_active_user());
-
 -- ----------------------------------------------------------------------------
--- 4. AUDIT LOG  (for the admin analytics / activity trail)
+-- 5. AUDIT LOG
 -- ----------------------------------------------------------------------------
 create table if not exists public.audit_log (
   id bigint generated always as identity primary key,
   flat_id text,
   action text not null,
-  performed_by uuid references public.profiles(id),
+  performed_by uuid references public.app_users(id),
   details jsonb,
   created_at timestamptz not null default now()
 );
 
-alter table public.audit_log enable row level security;
+-- ============================================================================
+-- 6. LOCK DOWN DIRECT TABLE ACCESS
+--    The anon key is the only key this app ever uses (there's no Supabase Auth
+--    login, so every request comes in as the 'anon' role). We revoke all
+--    direct table privileges from it, so the only way in or out is through the
+--    SECURITY DEFINER functions below, each of which enforces its own rules.
+-- ============================================================================
+revoke all on public.app_users    from anon, authenticated;
+revoke all on public.app_sessions from anon, authenticated;
+revoke all on public.flats        from anon, authenticated;
+revoke all on public.bookings     from anon, authenticated;
+revoke all on public.audit_log    from anon, authenticated;
 
-create policy "audit_log: admin can read" on public.audit_log
-  for select using (public.is_admin());
+alter table public.app_users    enable row level security;
+alter table public.app_sessions enable row level security;
+alter table public.flats        enable row level security;
+alter table public.bookings     enable row level security;
+alter table public.audit_log    enable row level security;
+-- (no policies are created — with RLS on and zero policies, and privileges
+--  revoked, these tables are completely inaccessible except to the functions
+--  below, which run as the table owner and therefore bypass RLS.)
 
 -- ============================================================================
--- 5. RPC FUNCTIONS — every write to flats/bookings goes through one of these.
---    They run as SECURITY DEFINER so they can bypass the (deliberately empty)
---    write policies above, but each one enforces its own permission checks.
+-- 7. SESSION HELPER — resolves a token to the calling user, or NULL
+-- ============================================================================
+create or replace function public._session_user(p_token uuid)
+returns public.app_users
+language sql
+security definer
+set search_path = public
+as $$
+  select u.*
+  from public.app_sessions s
+  join public.app_users u on u.id = s.user_id
+  where s.token = p_token
+    and s.expires_at > now()
+    and u.active = true
+  limit 1;
+$$;
+
+-- ============================================================================
+-- 8. AUTH FUNCTIONS
 -- ============================================================================
 
--- 5a. Update the negotiable pricing fields on a flat before it's booked.
+-- Is an admin account already set up? (used by the frontend to decide whether
+-- to show "create the first admin account" or the normal login form)
+create or replace function public.admin_exists()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.app_users where role = 'admin');
+$$;
+
+-- One-time bootstrap: creates the very first Super Admin account.
+-- Refuses to run again once any admin exists.
+create or replace function public.bootstrap_admin(
+  p_username text,
+  p_password text,
+  p_full_name text
+) returns table(token uuid, id uuid, username text, full_name text, role text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user public.app_users;
+  v_token uuid;
+begin
+  if exists (select 1 from public.app_users where role = 'admin') then
+    raise exception 'An admin account already exists. Please log in instead.';
+  end if;
+  if p_username is null or length(trim(p_username)) < 3 then
+    raise exception 'Username must be at least 3 characters';
+  end if;
+  if p_password is null or length(p_password) < 6 then
+    raise exception 'Password must be at least 6 characters';
+  end if;
+
+  insert into public.app_users(username, password_hash, full_name, role, active)
+  values (lower(trim(p_username)), crypt(p_password, gen_salt('bf')), p_full_name, 'admin', true)
+  returning * into v_user;
+
+  insert into public.app_sessions(user_id) values (v_user.id) returning app_sessions.token into v_token;
+
+  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role;
+end;
+$$;
+
+-- Normal login for everyone (admin included, after the first admin exists).
+create or replace function public.login(
+  p_username text,
+  p_password text
+) returns table(token uuid, id uuid, username text, full_name text, role text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user public.app_users;
+  v_token uuid;
+begin
+  select * into v_user from public.app_users
+  where username = lower(trim(p_username)) and active = true;
+
+  if v_user is null or v_user.password_hash <> crypt(p_password, v_user.password_hash) then
+    raise exception 'Invalid ID or password';
+  end if;
+
+  insert into public.app_sessions(user_id) values (v_user.id) returning app_sessions.token into v_token;
+
+  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role;
+end;
+$$;
+
+-- Restore a session on page reload.
+create or replace function public.whoami(p_token uuid)
+returns table(id uuid, username text, full_name text, role text)
+language sql
+security definer
+set search_path = public
+as $$
+  select u.id, u.username, u.full_name, u.role
+  from public._session_user(p_token) u;
+$$;
+
+create or replace function public.logout(p_token uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from public.app_sessions where token = p_token;
+$$;
+
+-- ============================================================================
+-- 9. ADMIN: USER MANAGEMENT (create / update / reset password / delete)
+-- ============================================================================
+
+create or replace function public.admin_list_users(p_token uuid)
+returns setof public.app_users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Not authorized';
+  end if;
+  return query select * from public.app_users order by created_at desc;
+end;
+$$;
+
+create or replace function public.admin_create_user(
+  p_token uuid,
+  p_username text,
+  p_password text,
+  p_full_name text,
+  p_role text
+) returns public.app_users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+  v_new public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Not authorized';
+  end if;
+  if p_role not in ('admin','sales') then
+    raise exception 'Role must be admin or sales';
+  end if;
+  if p_username is null or length(trim(p_username)) < 3 then
+    raise exception 'Username must be at least 3 characters';
+  end if;
+  if p_password is null or length(p_password) < 6 then
+    raise exception 'Password must be at least 6 characters';
+  end if;
+  if exists (select 1 from public.app_users where username = lower(trim(p_username))) then
+    raise exception 'That username is already taken';
+  end if;
+
+  insert into public.app_users(username, password_hash, full_name, role, active)
+  values (lower(trim(p_username)), crypt(p_password, gen_salt('bf')), p_full_name, p_role, true)
+  returning * into v_new;
+
+  insert into public.audit_log(action, performed_by, details)
+  values ('create_user', v_caller.id, jsonb_build_object('created_user', v_new.username, 'role', p_role));
+
+  return v_new;
+end;
+$$;
+
+-- Update a user's name / role / active flag (NOT password — use admin_reset_password for that).
+create or replace function public.admin_update_user(
+  p_token uuid,
+  p_user_id uuid,
+  p_full_name text,
+  p_role text,
+  p_active boolean
+) returns public.app_users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+  v_target public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Not authorized';
+  end if;
+  if p_role not in ('admin','sales') then
+    raise exception 'Role must be admin or sales';
+  end if;
+
+  select * into v_target from public.app_users where id = p_user_id;
+  if v_target is null then
+    raise exception 'User not found';
+  end if;
+
+  -- Don't allow demoting/deactivating the last remaining admin
+  if v_target.role = 'admin' and (p_role <> 'admin' or p_active = false) then
+    if (select count(*) from public.app_users where role = 'admin' and active = true) <= 1 then
+      raise exception 'Cannot demote or deactivate the last remaining admin';
+    end if;
+  end if;
+
+  update public.app_users
+    set full_name = p_full_name, role = p_role, active = p_active
+    where id = p_user_id
+    returning * into v_target;
+
+  insert into public.audit_log(action, performed_by, details)
+  values ('update_user', v_caller.id, jsonb_build_object('target_user', v_target.username));
+
+  return v_target;
+end;
+$$;
+
+create or replace function public.admin_reset_password(
+  p_token uuid,
+  p_user_id uuid,
+  p_new_password text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Not authorized';
+  end if;
+  if p_new_password is null or length(p_new_password) < 6 then
+    raise exception 'Password must be at least 6 characters';
+  end if;
+  if not exists (select 1 from public.app_users where id = p_user_id) then
+    raise exception 'User not found';
+  end if;
+
+  update public.app_users
+    set password_hash = crypt(p_new_password, gen_salt('bf'))
+    where id = p_user_id;
+
+  delete from public.app_sessions where user_id = p_user_id;
+
+  insert into public.audit_log(action, performed_by, details)
+  values ('reset_password', v_caller.id, jsonb_build_object('target_user_id', p_user_id));
+end;
+$$;
+
+create or replace function public.admin_delete_user(
+  p_token uuid,
+  p_user_id uuid
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+  v_target public.app_users;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Not authorized';
+  end if;
+  if p_user_id = v_caller.id then
+    raise exception 'You cannot delete your own account while logged in as it';
+  end if;
+
+  select * into v_target from public.app_users where id = p_user_id;
+  if v_target is null then
+    raise exception 'User not found';
+  end if;
+
+  if v_target.role = 'admin' and (select count(*) from public.app_users where role = 'admin') <= 1 then
+    raise exception 'Cannot delete the last remaining admin';
+  end if;
+
+  delete from public.app_users where id = p_user_id;
+
+  insert into public.audit_log(action, performed_by, details)
+  values ('delete_user', v_caller.id, jsonb_build_object('deleted_username', v_target.username));
+end;
+$$;
+
+-- ============================================================================
+-- 10. FLATS & BOOKINGS — READ ACCESS (any logged-in user, admin or sales)
+-- ============================================================================
+
+create or replace function public.get_flats(p_token uuid)
+returns setof public.flats
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public._session_user(p_token) is null then
+    raise exception 'Not authenticated';
+  end if;
+  return query select * from public.flats order by tower, floor_number, series;
+end;
+$$;
+
+create or replace function public.get_bookings(p_token uuid)
+returns table (
+  id uuid, flat_id text, buyer_name text, buyer_phone text, buyer_email text,
+  agreement_value numeric, stamp_duty_rate numeric, registration numeric,
+  stamp_duty numeric, gst numeric, package_total numeric,
+  cc_included boolean, cc_amount numeric, status text,
+  booked_by uuid, booked_at timestamptz,
+  cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
+  tower text, unit_no text, configuration_type text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public._session_user(p_token) is null then
+    raise exception 'Not authenticated';
+  end if;
+  return query
+    select b.id, b.flat_id, b.buyer_name, b.buyer_phone, b.buyer_email,
+           b.agreement_value, b.stamp_duty_rate, b.registration,
+           b.stamp_duty, b.gst, b.package_total,
+           b.cc_included, b.cc_amount, b.status,
+           b.booked_by, b.booked_at,
+           b.cancelled_by, b.cancelled_at, b.cancellation_reason,
+           f.tower, f.unit_no, f.configuration_type
+    from public.bookings b
+    join public.flats f on f.id = b.flat_id
+    order by b.booked_at desc;
+end;
+$$;
+
+create or replace function public.get_booking_for_flat(p_token uuid, p_flat_id text)
+returns public.bookings
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking public.bookings;
+begin
+  if public._session_user(p_token) is null then
+    raise exception 'Not authenticated';
+  end if;
+  select * into v_booking from public.bookings
+    where flat_id = p_flat_id and status = 'Active'
+    order by booked_at desc limit 1;
+  return v_booking;
+end;
+$$;
+
+-- ============================================================================
+-- 11. FLATS & BOOKINGS — WRITES (business rules enforced here)
+-- ============================================================================
+
 create or replace function public.update_flat_pricing(
+  p_token uuid,
   p_flat_id text,
   p_agreement_value numeric,
   p_stamp_duty_rate numeric
@@ -176,10 +523,12 @@ security definer
 set search_path = public
 as $$
 declare
+  v_caller public.app_users;
   v_flat public.flats;
 begin
-  if not public.is_active_user() then
-    raise exception 'Not authorized';
+  v_caller := public._session_user(p_token);
+  if v_caller is null then
+    raise exception 'Not authenticated';
   end if;
 
   select * into v_flat from public.flats where id = p_flat_id for update;
@@ -207,15 +556,15 @@ begin
     returning * into v_flat;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
-    values (p_flat_id, 'update_pricing', auth.uid(),
+    values (p_flat_id, 'update_pricing', v_caller.id,
             jsonb_build_object('agreement_value', p_agreement_value, 'stamp_duty_rate', p_stamp_duty_rate));
 
   return v_flat;
 end;
 $$;
 
--- 5b. Admin-only: toggle / set the Cash Component for a specific flat.
 create or replace function public.set_flat_cc(
+  p_token uuid,
   p_flat_id text,
   p_enabled boolean,
   p_amount numeric
@@ -225,9 +574,11 @@ security definer
 set search_path = public
 as $$
 declare
+  v_caller public.app_users;
   v_flat public.flats;
 begin
-  if not public.is_admin() then
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
     raise exception 'Only admin can set the cash component';
   end if;
 
@@ -243,15 +594,15 @@ begin
   end if;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
-    values (p_flat_id, 'set_cc', auth.uid(),
+    values (p_flat_id, 'set_cc', v_caller.id,
             jsonb_build_object('enabled', p_enabled, 'amount', p_amount));
 
   return v_flat;
 end;
 $$;
 
--- 5c. Book a flat (sales or admin).
 create or replace function public.book_flat(
+  p_token uuid,
   p_flat_id text,
   p_buyer_name text,
   p_buyer_phone text,
@@ -265,11 +616,13 @@ security definer
 set search_path = public
 as $$
 declare
+  v_caller public.app_users;
   v_flat public.flats;
   v_booking public.bookings;
 begin
-  if not public.is_active_user() then
-    raise exception 'Not authorized';
+  v_caller := public._session_user(p_token);
+  if v_caller is null then
+    raise exception 'Not authenticated';
   end if;
 
   select * into v_flat from public.flats where id = p_flat_id for update;
@@ -306,18 +659,18 @@ begin
     (p_flat_id, p_buyer_name, p_buyer_phone, p_buyer_email, p_agreement_value, p_stamp_duty_rate,
      v_flat.registration, coalesce(p_include_cc,false),
      case when p_include_cc then v_flat.cc_amount else 0 end,
-     auth.uid())
+     v_caller.id)
   returning * into v_booking;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
-    values (p_flat_id, 'book_flat', auth.uid(), to_jsonb(v_booking));
+    values (p_flat_id, 'book_flat', v_caller.id, to_jsonb(v_booking));
 
   return v_booking;
 end;
 $$;
 
--- 5d. Admin-only: cancel a booking, flat goes back to Available.
 create or replace function public.cancel_booking(
+  p_token uuid,
   p_booking_id uuid,
   p_reason text
 ) returns public.bookings
@@ -326,9 +679,11 @@ security definer
 set search_path = public
 as $$
 declare
+  v_caller public.app_users;
   v_booking public.bookings;
 begin
-  if not public.is_admin() then
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
     raise exception 'Only admin can cancel a booking';
   end if;
 
@@ -342,7 +697,7 @@ begin
 
   update public.bookings
     set status = 'Cancelled',
-        cancelled_by = auth.uid(),
+        cancelled_by = v_caller.id,
         cancelled_at = now(),
         cancellation_reason = p_reason
     where id = p_booking_id
@@ -353,7 +708,7 @@ begin
     where id = v_booking.flat_id;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
-    values (v_booking.flat_id, 'cancel_booking', auth.uid(),
+    values (v_booking.flat_id, 'cancel_booking', v_caller.id,
             jsonb_build_object('booking_id', p_booking_id, 'reason', p_reason));
 
   return v_booking;
@@ -361,6 +716,29 @@ end;
 $$;
 
 -- ============================================================================
--- Done. Next: run seed_data.sql, then deploy the admin-users Edge Function,
--- then create your first admin profile row manually (see README.md).
+-- 12. GRANTS — the anon role may only ever call these functions, never touch
+--     the tables directly.
+-- ============================================================================
+grant execute on function public.admin_exists() to anon;
+grant execute on function public.bootstrap_admin(text, text, text) to anon;
+grant execute on function public.login(text, text) to anon;
+grant execute on function public.whoami(uuid) to anon;
+grant execute on function public.logout(uuid) to anon;
+grant execute on function public.admin_list_users(uuid) to anon;
+grant execute on function public.admin_create_user(uuid, text, text, text, text) to anon;
+grant execute on function public.admin_update_user(uuid, uuid, text, text, boolean) to anon;
+grant execute on function public.admin_reset_password(uuid, uuid, text) to anon;
+grant execute on function public.admin_delete_user(uuid, uuid) to anon;
+grant execute on function public.get_flats(uuid) to anon;
+grant execute on function public.get_bookings(uuid) to anon;
+grant execute on function public.get_booking_for_flat(uuid, text) to anon;
+grant execute on function public.update_flat_pricing(uuid, text, numeric, numeric) to anon;
+grant execute on function public.set_flat_cc(uuid, text, boolean, numeric) to anon;
+grant execute on function public.book_flat(uuid, text, text, text, text, numeric, numeric, boolean) to anon;
+grant execute on function public.cancel_booking(uuid, uuid, text) to anon;
+
+-- ============================================================================
+-- Done. Next: run seed_data.sql, then open the app. Since no admin exists
+-- yet, it will show "Create Admin Account" first. After that, log in as
+-- admin and create sales logins from the Users tab.
 -- ============================================================================

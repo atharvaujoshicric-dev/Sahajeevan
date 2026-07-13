@@ -1,49 +1,77 @@
-let currentProfile = null; // { id, username, full_name, role }
+// Custom lightweight auth (no Supabase Auth): a session token is issued by the
+// login()/bootstrap_admin() database functions and stored in localStorage.
+// Every RPC call that needs to know "who is this" is passed this token.
+
+let currentUser = null;   // { id, username, full_name, role }
+let currentToken = null;  // uuid string
+
+const TOKEN_KEY = "sahjeevan_token";
 
 async function initAuth() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    await loadProfileAndRoute();
+  currentToken = localStorage.getItem(TOKEN_KEY);
+
+  if (currentToken) {
+    const { data, error } = await sb.rpc("whoami", { p_token: currentToken });
+    if (!error && data && data.length) {
+      currentUser = data[0];
+      routeToDashboard();
+      return;
+    }
+    // stale/expired token
+    localStorage.removeItem(TOKEN_KEY);
+    currentToken = null;
+  }
+
+  await showLoginOrBootstrap();
+}
+
+async function showLoginOrBootstrap() {
+  const { data: exists, error } = await sb.rpc("admin_exists");
+  if (error) {
+    toast(error.message, "error");
+  }
+  if (exists === false) {
+    showView("bootstrap");
   } else {
     showView("login");
   }
-
-  sb.auth.onAuthStateChange((event) => {
-    if (event === "SIGNED_OUT") {
-      currentProfile = null;
-      showView("login");
-    }
-  });
 }
 
-async function loadProfileAndRoute() {
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) {
-    showView("login");
-    return;
-  }
-  const { data: profile, error } = await sb
-    .from("profiles")
-    .select("id, username, full_name, role, active")
-    .eq("id", user.id)
-    .single();
-
-  if (error || !profile || !profile.active) {
-    toast("Account not found or deactivated. Contact admin.", "error");
-    await sb.auth.signOut();
-    showView("login");
-    return;
-  }
-
-  currentProfile = profile;
-
-  if (profile.role === "admin") {
+function routeToDashboard() {
+  if (currentUser.role === "admin") {
     showView("admin");
     initAdminView();
   } else {
     showView("sales");
     initSalesView();
   }
+}
+
+async function handleBootstrap(e) {
+  e.preventDefault();
+  const username = document.getElementById("bootstrap-username").value.trim();
+  const password = document.getElementById("bootstrap-password").value;
+  const fullName = document.getElementById("bootstrap-fullname").value.trim();
+  const errEl = document.getElementById("bootstrap-error");
+  errEl.textContent = "";
+
+  const { data, error } = await sb.rpc("bootstrap_admin", {
+    p_username: username,
+    p_password: password,
+    p_full_name: fullName,
+  });
+
+  if (error) {
+    errEl.textContent = error.message;
+    return;
+  }
+
+  const row = data[0];
+  currentToken = row.token;
+  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role };
+  localStorage.setItem(TOKEN_KEY, currentToken);
+  toast("Admin account created — welcome!");
+  routeToDashboard();
 }
 
 async function handleLogin(e) {
@@ -56,8 +84,7 @@ async function handleLogin(e) {
   btn.disabled = true;
   btn.textContent = "Signing in...";
 
-  const email = usernameToEmail(username);
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  const { data, error } = await sb.rpc("login", { p_username: username, p_password: password });
 
   btn.disabled = false;
   btn.textContent = "Sign in";
@@ -66,13 +93,22 @@ async function handleLogin(e) {
     errEl.textContent = "Invalid ID or password.";
     return;
   }
-  await loadProfileAndRoute();
+
+  const row = data[0];
+  currentToken = row.token;
+  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role };
+  localStorage.setItem(TOKEN_KEY, currentToken);
+  routeToDashboard();
 }
 
 async function handleLogout() {
-  await sb.auth.signOut();
-  currentProfile = null;
-  showView("login");
+  if (currentToken) {
+    await sb.rpc("logout", { p_token: currentToken });
+  }
+  localStorage.removeItem(TOKEN_KEY);
+  currentToken = null;
+  currentUser = null;
+  await showLoginOrBootstrap();
 }
 
 function showView(name) {

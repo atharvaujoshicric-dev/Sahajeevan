@@ -14,14 +14,7 @@ async function openFlatDetail(flat, isAdmin) {
 
   let booking = null;
   if (flat.status === "Booked") {
-    const { data } = await sb
-      .from("bookings")
-      .select("*")
-      .eq("flat_id", flat.id)
-      .eq("status", "Active")
-      .order("booked_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data } = await sb.rpc("get_booking_for_flat", { p_token: currentToken, p_flat_id: flat.id });
     booking = data;
   }
 
@@ -136,6 +129,7 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
   if (savePricingBtn) {
     savePricingBtn.addEventListener("click", async () => {
       const { error } = await sb.rpc("update_flat_pricing", {
+        p_token: currentToken,
         p_flat_id: flat.id,
         p_agreement_value: Number(avInput.value),
         p_stamp_duty_rate: currentRate(),
@@ -156,6 +150,7 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
       const enabled = document.getElementById("fd-cc-enabled").checked;
       const amount = Number(document.getElementById("fd-cc-amount").value) || 0;
       const { error } = await sb.rpc("set_flat_cc", {
+        p_token: currentToken,
         p_flat_id: flat.id,
         p_enabled: enabled,
         p_amount: amount,
@@ -183,6 +178,7 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
       const reason = prompt("Reason for cancellation:");
       if (reason === null) return;
       const { error } = await sb.rpc("cancel_booking", {
+        p_token: currentToken,
         p_booking_id: booking.id,
         p_reason: reason,
       });
@@ -233,6 +229,7 @@ function openBookingForm(flat, agreementValue, rate) {
     const includeCc = document.getElementById("bk-cc") ? document.getElementById("bk-cc").checked : false;
 
     const { error } = await sb.rpc("book_flat", {
+      p_token: currentToken,
       p_flat_id: flat.id,
       p_buyer_name: name,
       p_buyer_phone: phone,

@@ -2,7 +2,7 @@ let adminFlats = [];
 let adminBookings = [];
 
 async function initAdminView() {
-  document.getElementById("admin-username").textContent = currentProfile.full_name || currentProfile.username;
+  document.getElementById("admin-username").textContent = currentUser.full_name || currentUser.username;
 
   document.querySelectorAll(".admin-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchAdminTab(btn.dataset.tab));
@@ -38,8 +38,8 @@ function switchAdminTab(tab) {
 
 async function refreshAdminData() {
   const [{ data: flats, error: flatsErr }, { data: bookings, error: bookErr }] = await Promise.all([
-    sb.from("flats").select("*").order("tower").order("floor_number").order("series"),
-    sb.from("bookings").select("*, flats(id, tower, unit_no, configuration_type)").order("booked_at", { ascending: false }),
+    sb.rpc("get_flats", { p_token: currentToken }),
+    sb.rpc("get_bookings", { p_token: currentToken }),
   ]);
   if (flatsErr) toast(flatsErr.message, "error");
   if (bookErr) toast(bookErr.message, "error");
@@ -112,10 +112,9 @@ function renderBookingsTable() {
   const tbody = document.getElementById("bookings-tbody");
   tbody.innerHTML = adminBookings
     .map((b) => {
-      const flat = b.flats || {};
       return `
       <tr>
-        <td>${escapeHtml(flat.id || b.flat_id)}</td>
+        <td>${escapeHtml(b.flat_id)}</td>
         <td>${escapeHtml(b.buyer_name)}</td>
         <td>${escapeHtml(b.buyer_phone || "-")}</td>
         <td>${formatINR(b.package_total)}</td>
@@ -135,7 +134,11 @@ function renderBookingsTable() {
     btn.addEventListener("click", async () => {
       const reason = prompt("Reason for cancellation:");
       if (reason === null) return;
-      const { error } = await sb.rpc("cancel_booking", { p_booking_id: btn.dataset.id, p_reason: reason });
+      const { error } = await sb.rpc("cancel_booking", {
+        p_token: currentToken,
+        p_booking_id: btn.dataset.id,
+        p_reason: reason,
+      });
       if (error) {
         toast(error.message, "error");
       } else {
@@ -149,71 +152,89 @@ function renderBookingsTable() {
 }
 
 // ---------------------------------------------------------------- USERS
-async function callAdminUsersFn(action, payload) {
-  const { data: { session } } = await sb.auth.getSession();
-  const res = await fetch(ADMIN_USERS_FUNCTION_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ action, ...payload }),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || "Request failed");
-  return json;
-}
-
 async function loadUsers() {
-  try {
-    const { users } = await callAdminUsersFn("list_users", {});
-    const tbody = document.getElementById("users-tbody");
-    tbody.innerHTML = users
-      .map(
-        (u) => `
-      <tr>
-        <td>${escapeHtml(u.username)}</td>
-        <td>${escapeHtml(u.full_name || "-")}</td>
-        <td>${escapeHtml(u.role)}</td>
-        <td>${u.active ? "Active" : "Deactivated"}</td>
-        <td>
-          <button class="btn secondary small" data-reset="${u.id}">Reset Password</button>
-          <button class="btn ${u.active ? "danger" : "secondary"} small" data-toggle="${u.id}" data-active="${u.active}">
-            ${u.active ? "Deactivate" : "Reactivate"}
-          </button>
-        </td>
-      </tr>`
-      )
-      .join("");
-
-    tbody.querySelectorAll("button[data-reset]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const newPass = prompt("Enter new password (min 6 characters):");
-        if (!newPass) return;
-        try {
-          await callAdminUsersFn("reset_password", { user_id: btn.dataset.reset, new_password: newPass });
-          toast("Password reset");
-        } catch (e) {
-          toast(e.message, "error");
-        }
-      });
-    });
-
-    tbody.querySelectorAll("button[data-toggle]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const active = btn.dataset.active === "true";
-        try {
-          await callAdminUsersFn("set_active", { user_id: btn.dataset.toggle, active: !active });
-          toast(!active ? "User reactivated" : "User deactivated");
-          loadUsers();
-        } catch (e) {
-          toast(e.message, "error");
-        }
-      });
-    });
-  } catch (e) {
-    toast(e.message, "error");
+  const { data: users, error } = await sb.rpc("admin_list_users", { p_token: currentToken });
+  if (error) {
+    toast(error.message, "error");
+    return;
   }
+
+  const tbody = document.getElementById("users-tbody");
+  tbody.innerHTML = users
+    .map(
+      (u) => `
+    <tr>
+      <td>${escapeHtml(u.username)}</td>
+      <td>${escapeHtml(u.full_name || "-")}</td>
+      <td>${escapeHtml(u.role)}</td>
+      <td>${u.active ? "Active" : "Deactivated"}</td>
+      <td>
+        <button class="btn secondary small" data-edit="${u.id}">Edit</button>
+        <button class="btn secondary small" data-reset="${u.id}">Reset Password</button>
+        <button class="btn danger small" data-delete="${u.id}">Delete</button>
+      </td>
+    </tr>`
+    )
+    .join("");
+
+  tbody.querySelectorAll("button[data-reset]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const newPass = prompt("Enter new password (min 6 characters):");
+      if (!newPass) return;
+      const { error } = await sb.rpc("admin_reset_password", {
+        p_token: currentToken,
+        p_user_id: btn.dataset.reset,
+        p_new_password: newPass,
+      });
+      if (error) toast(error.message, "error");
+      else toast("Password reset. That user has been logged out everywhere.");
+    });
+  });
+
+  tbody.querySelectorAll("button[data-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const u = users.find((x) => x.id === btn.dataset.edit);
+      const fullName = prompt("Full name:", u.full_name || "");
+      if (fullName === null) return;
+      const role = prompt("Role (admin/sales):", u.role);
+      if (role === null || !["admin", "sales"].includes(role)) {
+        if (role !== null) toast("Role must be 'admin' or 'sales'", "error");
+        return;
+      }
+      const activeStr = prompt("Active? (yes/no):", u.active ? "yes" : "no");
+      if (activeStr === null) return;
+      const active = activeStr.trim().toLowerCase().startsWith("y");
+
+      const { error } = await sb.rpc("admin_update_user", {
+        p_token: currentToken,
+        p_user_id: u.id,
+        p_full_name: fullName,
+        p_role: role,
+        p_active: active,
+      });
+      if (error) toast(error.message, "error");
+      else {
+        toast("User updated");
+        loadUsers();
+      }
+    });
+  });
+
+  tbody.querySelectorAll("button[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const u = users.find((x) => x.id === btn.dataset.delete);
+      if (!confirm(`Permanently delete the login "${u.username}"? This cannot be undone.`)) return;
+      const { error } = await sb.rpc("admin_delete_user", {
+        p_token: currentToken,
+        p_user_id: u.id,
+      });
+      if (error) toast(error.message, "error");
+      else {
+        toast("User deleted");
+        loadUsers();
+      }
+    });
+  });
 }
 
 document.getElementById("create-user-form").addEventListener("submit", async (e) => {
@@ -223,12 +244,19 @@ document.getElementById("create-user-form").addEventListener("submit", async (e)
   const fullName = document.getElementById("new-fullname").value.trim();
   const role = document.getElementById("new-role").value;
 
-  try {
-    await callAdminUsersFn("create_user", { username, password, full_name: fullName, role });
+  const { error } = await sb.rpc("admin_create_user", {
+    p_token: currentToken,
+    p_username: username,
+    p_password: password,
+    p_full_name: fullName,
+    p_role: role,
+  });
+
+  if (error) {
+    toast(error.message, "error");
+  } else {
     toast("User created");
     document.getElementById("create-user-form").reset();
     loadUsers();
-  } catch (err) {
-    toast(err.message, "error");
   }
 });

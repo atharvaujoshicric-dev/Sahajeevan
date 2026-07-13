@@ -1,7 +1,7 @@
 let salesFlats = [];
 
 async function initSalesView() {
-  document.getElementById("sales-username").textContent = currentProfile.full_name || currentProfile.username;
+  document.getElementById("sales-username").textContent = currentUser.full_name || currentUser.username;
   await loadSalesFlats();
 
   document.getElementById("sales-search").oninput = (e) => {
@@ -18,12 +18,12 @@ async function salesRefreshHandler() {
 }
 
 async function loadSalesFlats() {
-  const { data, error } = await sb.from("flats").select("*").order("tower").order("floor_number").order("series");
+  const { data, error } = await sb.rpc("get_flats", { p_token: currentToken });
   if (error) {
     toast(error.message, "error");
     return;
   }
-  salesFlats = data;
+  salesFlats = data || [];
   renderSalesSeatMap("");
 }
 
