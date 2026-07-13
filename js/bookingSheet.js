@@ -27,6 +27,13 @@ function openBookingSheet(flat, booking) {
   const qrText = qrContentForBooking(flat, booking);
 
   function renderCopy(label, qrId) {
+    const paymentRows = PAYMENT_SLABS.map((row) => {
+      const amount = Math.round(fig.agreementValue * (row.percent / 100));
+      return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td><td class="amt">${formatINR(amount)}</td></tr>`;
+    }).join("");
+
+    const termsList = STANDARD_TERMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+
     return `
       <div class="copy">
         <div class="letterhead">
@@ -36,8 +43,8 @@ function openBookingSheet(flat, booking) {
             <div class="paddr">${escapeHtml(PROJECT_ADDRESS)}</div>
           </div>
           <div class="rera-block">
-            <div class="rera-no">RERA No: ${escapeHtml(PROJECT_RERA_NUMBER)}</div>
             <div id="${qrId}" class="qr"></div>
+            <div class="rera-no">${escapeHtml(PROJECT_RERA_NUMBER)}</div>
           </div>
         </div>
 
@@ -69,6 +76,15 @@ function openBookingSheet(flat, booking) {
           <tr><td class="k">Package Total</td><td colspan="3"><strong>${formatINR(fig.packageTotal)}</strong></td></tr>
           ${booking.cc_included ? `<tr><td class="k">Cash Component</td><td colspan="3">${formatINR(booking.cc_amount)}</td></tr>` : ""}
         </table>
+
+        <h3>Payment Schedule (construction-linked, on Agreement Value)</h3>
+        <table class="info-table payment-table">
+          <tr><th>Stage</th><th>Payment</th><th>Amount</th></tr>
+          ${paymentRows}
+        </table>
+
+        <h3>Terms &amp; Conditions</h3>
+        <ol class="terms-list">${termsList}</ol>
 
         <div class="signatures">
           <div class="sig-block">
@@ -102,9 +118,13 @@ function openBookingSheet(flat, booking) {
         .project-title { text-align: center; flex: 1; }
         .pname { font-size: 20px; font-weight: bold; color: #1e3a8a; }
         .paddr { font-size: 12px; color: #6b7280; }
-        .rera-block { text-align: right; font-size: 11px; }
-        .rera-no { margin-bottom: 6px; }
+        .rera-block { text-align: right; font-size: 11px; display: flex; flex-direction: column; align-items: flex-end; }
+        .rera-no { margin-top: 6px; }
         .qr { display: inline-block; }
+        .payment-table th { background: #1e3a8a; color: white; padding: 6px 8px; text-align: left; }
+        .payment-table td.pct, .payment-table td.amt { text-align: right; white-space: nowrap; }
+        .terms-list { font-size: 11px; color: #374151; padding-left: 18px; margin: 4px 0 0; }
+        .terms-list li { margin-bottom: 5px; }
         .copy-label { text-align: right; font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #1e40af; margin-top: 10px; }
         h2 { font-size: 16px; margin: 14px 0 6px; }
         h3 { font-size: 13px; margin: 16px 0 4px; color: #1e3a8a; }
