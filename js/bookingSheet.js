@@ -46,19 +46,20 @@ function openBookingSheet(flat, booking) {
 
   function renderCopy(label, qrId) {
     const paymentRows = PAYMENT_SLABS.map((row) => {
-      const amount = Math.round(fig.agreementValue * (row.percent / 100));
-      return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td><td class="amt">${formatINR(amount)}</td></tr>`;
+      return `<tr><td>${escapeHtml(row.stage)}</td><td class="pct">${row.percent}%</td></tr>`;
     }).join("");
 
     const termsList = STANDARD_TERMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
 
     const page1 = `
       <div class="page">
+        <img src="${PROJECT_LOGO_PATH}" class="watermark" onerror="this.style.display='none'" />
         <div class="letterhead">
           <img src="${PROJECT_LOGO_PATH}" class="logo" onerror="this.style.display='none'" />
           <div class="project-title">
             <div class="pname">${escapeHtml(PROJECT_NAME)}</div>
-            <div class="paddr">${escapeHtml(PROJECT_ADDRESS)}</div>
+            <div class="paddr">${escapeHtml(PROJECT_ADDRESS_LINE1)}</div>
+            <div class="paddr">${escapeHtml(PROJECT_ADDRESS_LINE2)}</div>
           </div>
           <div class="rera-block">
             <div id="${qrId}" class="qr"></div>
@@ -101,6 +102,7 @@ function openBookingSheet(flat, booking) {
 
     const page2 = `
       <div class="page">
+        <img src="${PROJECT_LOGO_PATH}" class="watermark" onerror="this.style.display='none'" />
         <div class="running-header">
           <span>${escapeHtml(PROJECT_NAME)} — Flat ${escapeHtml(flat.id)}</span>
           <span class="copy-label-inline">${label}</span>
@@ -108,7 +110,7 @@ function openBookingSheet(flat, booking) {
 
         <h3>Payment Schedule (construction-linked, on Agreement Value)</h3>
         <table class="info-table payment-table">
-          <tr><th>Stage</th><th>Payment</th><th>Amount</th></tr>
+          <tr><th>Stage</th><th>Payment</th></tr>
           ${paymentRows}
         </table>
 
@@ -136,6 +138,7 @@ function openBookingSheet(flat, booking) {
         body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; }
 
         .page {
+          position: relative;
           width: 100%;
           max-width: 186mm; /* A4 minus margins */
           margin: 0 auto;
@@ -143,6 +146,18 @@ function openBookingSheet(flat, booking) {
           page-break-after: always;
         }
         .page:last-of-type { page-break-after: auto; }
+
+        .watermark {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 75%;
+          max-width: 480px;
+          opacity: 0.07;
+          z-index: -1;
+          pointer-events: none;
+        }
 
         .letterhead {
           display: grid;
@@ -180,7 +195,7 @@ function openBookingSheet(flat, booking) {
         .info-table td.k { background: #f8fafc; color: #6b7280; width: 140px; }
 
         .payment-table th { background: #1e3a8a; color: white; text-align: left; }
-        .payment-table td.pct, .payment-table td.amt { text-align: right; white-space: nowrap; }
+        .payment-table td.pct { text-align: right; white-space: nowrap; }
 
         .terms-list { font-size: 10.5px; color: #374151; padding-left: 18px; margin: 4px 0 0; }
         .terms-list li { margin-bottom: 4px; }
