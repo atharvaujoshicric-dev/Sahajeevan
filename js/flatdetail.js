@@ -82,7 +82,7 @@ async function openFlatDetail(flat, isAdmin) {
       <button class="btn secondary" id="fd-save-cc">Save Cash Component</button>
     ` : ""}
 
-    ${canEditPricing ? `<button class="btn secondary" id="fd-save-pricing">Save Pricing Changes</button>` : ""}
+    ${isAdmin && canEditPricing ? `<button class="btn secondary" id="fd-save-pricing">Save Pricing Changes</button>` : ""}
 
     ${booking ? `
       <hr/>
