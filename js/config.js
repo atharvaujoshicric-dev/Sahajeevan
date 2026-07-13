@@ -6,7 +6,8 @@
 // ============================================================================
 
 const PROJECT_NAME = "Sahjeevan";
-const PROJECT_ADDRESS = "S. No. 254, Sus, Mulshi, Pune"; // from the Parking Sheet cost-center line — confirm/replace if needed
+const PROJECT_ADDRESS_LINE1 = "Near Onella Nest Phase 1, Thaksen Nagar, Sus,";
+const PROJECT_ADDRESS_LINE2 = "Pune, Maharashtra 411021";
 const PROJECT_RERA_NUMBER = "MAHA-RERA Reg No. PR1260002600468";
 
 // Put your logo file at assets/logo.png (any image works; recommended ~300x120px, transparent background).
@@ -42,18 +43,20 @@ const PAYMENT_SLABS = [
   { stage: "At possession (on or after receipt of Occupancy Certificate/Completion Certificate, whichever is earlier)", percent: 5 },
 ];
 
-// Standard Terms & Conditions — generic real-estate boilerplate. Please have
-// your legal team review/customize these before relying on them; I've kept
-// them general rather than inventing project-specific legal commitments.
+// Project-specific Terms & Conditions, as provided.
 const STANDARD_TERMS = [
-  "This booking is provisional and shall be confirmed only upon execution of the Agreement for Sale and receipt of the payments as per the agreed schedule.",
-  "The payment schedule mentioned herein is construction-linked; stamp duty, registration charges, and GST are payable separately and are not included in the slab percentages above.",
-  "In case of cancellation of booking by the customer, the refund (if any) shall be subject to deduction of charges as per the Agreement for Sale and applicable law.",
-  "The Saleable Area, Carpet Area, and layout indicated are as per the sanctioned plan and are subject to change as may be required by competent authorities, with proportionate adjustment in consideration, if applicable.",
-  "Possession of the flat shall be subject to force majeure conditions, including but not limited to natural calamities, government orders, or circumstances beyond the developer's reasonable control.",
-  "All applicable taxes, including GST, shall be borne by the customer at the rate prevailing at the time of payment.",
-  "Car parking allotment, if any, is separate from this booking and shall be governed by a separate agreement/allotment letter.",
-  "Society/association formation charges, maintenance deposits, and other incidental charges shall be payable by the customer separately, as applicable at the time of possession.",
-  "The developer reserves the right to make changes in specifications, design, or amenities as may be necessitated by technical, statutory, or other requirements, without materially affecting the overall value of the flat.",
-  "Any dispute arising out of or in connection with this booking shall be subject to the jurisdiction of the competent courts/authorities at Pune.",
+  "Booking Amount: ₹2,00,000/- only.",
+  "Balance Payment: 10% to be paid within 2 weeks from the date of booking.",
+  "Legal Charges: ₹15,000/- to be paid at the time of agreement.",
+  "100% refund on booking cancellation within 15 days. After 15 days, interest as per RERA on the booked amount will be deducted and the balance amount will be refunded.",
+  "One Covered Parking is included in the Package Cost Above.",
+  "GST, Stamp duty, Registration charges, and all applicable government charges are as per the current rates, and in future, it may change as per government notification which would be borne by the customer.",
+  "Flat registration to be done within 15 days from the date of booking.",
+  "The above areas are shown in square feet only to make it easy for the purchaser to understand. The sale of the said unit is on the basis of the RERA carpet area only.",
+  "Maintenance Charges are payable for 24 months of ₹4/- PSF on carpet area at the time of possession.",
+  "Loan facilities are available from all leading banks and home loan sanctioning is the customer's responsibility, the developer however will assist in the process.",
+  "All legal documents will be executed in square meters only.",
+  "Booking is non-transferable.",
+  "The promoters reserve the right to change the above prices and the offer given at any time without prior notice.",
+  "The information on this paper is provided in good faith and does not constitute part of the contract.",
 ];
