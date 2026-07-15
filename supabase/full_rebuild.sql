@@ -31,6 +31,7 @@ declare
     'admin_delete_user','get_flats','get_bookings','get_booking_for_flat',
     'update_flat_pricing','set_flat_cc','book_flat','cancel_booking',
     'admin_reset_system_data','admin_set_flat_unblock',
+    'update_booking_date','admin_update_booking_details', -- current + old name, if present
     'is_admin','is_active_user' -- old Supabase-Auth-era helpers, if present
   ];
 begin

@@ -95,7 +95,8 @@ body {
 
 /* ---------------- SEAT MAP ---------------- */
 .seatmap { background: var(--card); border-radius: 12px; padding: 20px; }
-.tower-block { margin-bottom: 24px; }
+.towers-row { display: flex; gap: 32px; align-items: flex-start; overflow-x: auto; }
+.tower-block { margin-bottom: 24px; flex: 1; min-width: 320px; }
 .tower-block h3 { margin: 0 0 10px; font-size: 15px; color: var(--brand-dark); }
 .floor-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .floor-label { width: 46px; font-size: 12px; color: var(--muted); flex-shrink: 0; }

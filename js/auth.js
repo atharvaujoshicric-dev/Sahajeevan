@@ -68,7 +68,7 @@ async function handleBootstrap(e) {
 
   const row = data[0];
   currentToken = row.token;
-  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role };
+  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role, can_edit_booking_date: row.can_edit_booking_date };
   localStorage.setItem(TOKEN_KEY, currentToken);
   toast("Admin account created — welcome!");
   routeToDashboard();
@@ -96,7 +96,7 @@ async function handleLogin(e) {
 
   const row = data[0];
   currentToken = row.token;
-  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role };
+  currentUser = { id: row.id, username: row.username, full_name: row.full_name, role: row.role, can_edit_booking_date: row.can_edit_booking_date };
   localStorage.setItem(TOKEN_KEY, currentToken);
   routeToDashboard();
 }

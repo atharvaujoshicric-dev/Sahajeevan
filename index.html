@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sahjeevan — Live Inventory System</title>
-<link rel="stylesheet" href="css/style.css?v=20260713g" />
+<link rel="stylesheet" href="css/style.css?v=20260713h" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -59,7 +59,7 @@
 <!-- ============================== SALES VIEW ============================== -->
 <div id="view-sales" class="view">
   <div class="topbar">
-    <h2>Sahjeevan Inventory — Sales</h2>
+    <h2 id="sales-title">Sahjeevan Inventory — Sales</h2>
     <div>
       <span class="who" id="sales-username"></span>
       <button class="logout" onclick="handleLogout()">Log out</button>
@@ -149,17 +149,22 @@
             <input type="text" id="new-fullname" />
             <label>Password</label>
             <input type="text" id="new-password" required minlength="6" />
-            <label>Role</label>
+            <label>Designation</label>
             <select id="new-role">
               <option value="sales">Sales</option>
+              <option value="site_head">Site Head</option>
               <option value="admin">Admin</option>
             </select>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+              <input type="checkbox" id="new-can-edit-booking-date" style="width:auto;" />
+              Can edit booking dates (Site Head only)
+            </label>
             <button class="btn primary" type="submit">Create Login</button>
           </form>
         </div>
         <div style="flex: 2; min-width: 320px;">
           <table>
-            <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Status</th><th>Permissions</th><th></th></tr></thead>
             <tbody id="users-tbody"></tbody>
           </table>
         </div>
@@ -215,15 +220,15 @@
   </div>
 </div>
 
-<script src="js/supabaseClient.js?v=20260713g"></script>
-<script src="js/utils.js?v=20260713g"></script>
-<script src="js/config.js?v=20260713g"></script>
-<script src="js/auth.js?v=20260713g"></script>
-<script src="js/seatmap.js?v=20260713g"></script>
-<script src="js/flatdetail.js?v=20260713g"></script>
-<script src="js/bookingSheet.js?v=20260713g"></script>
-<script src="js/sales.js?v=20260713g"></script>
-<script src="js/admin.js?v=20260713g"></script>
+<script src="js/supabaseClient.js?v=20260713h"></script>
+<script src="js/utils.js?v=20260713h"></script>
+<script src="js/config.js?v=20260713h"></script>
+<script src="js/auth.js?v=20260713h"></script>
+<script src="js/seatmap.js?v=20260713h"></script>
+<script src="js/flatdetail.js?v=20260713h"></script>
+<script src="js/bookingSheet.js?v=20260713h"></script>
+<script src="js/sales.js?v=20260713h"></script>
+<script src="js/admin.js?v=20260713h"></script>
 <script>
   document.querySelectorAll(".login-logo").forEach((img) => { img.src = PROJECT_LOGO_PATH; });
   document.querySelectorAll(".brand-rera-qr").forEach((img) => { img.src = PROJECT_RERA_QR_PATH; });

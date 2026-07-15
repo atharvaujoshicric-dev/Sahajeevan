@@ -17,8 +17,11 @@ create table if not exists public.app_users (
   username text unique not null,
   password_hash text not null,
   full_name text,
-  role text not null check (role in ('admin','sales')),
+  role text not null check (role in ('admin','sales','site_head')),
   active boolean not null default true,
+  -- Granular permission: lets a non-admin (typically Site Head) edit a
+  -- booking's date. Admin can always do this regardless of this flag.
+  can_edit_booking_date boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -210,7 +213,7 @@ create or replace function public.bootstrap_admin(
   p_username text,
   p_password text,
   p_full_name text
-) returns table(token uuid, id uuid, username text, full_name text, role text)
+) returns table(token uuid, id uuid, username text, full_name text, role text, can_edit_booking_date boolean)
 language plpgsql
 security definer
 set search_path = public, extensions
@@ -235,7 +238,7 @@ begin
 
   insert into public.app_sessions(user_id) values (v_user.id) returning app_sessions.token into v_token;
 
-  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role;
+  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role, v_user.can_edit_booking_date;
 end;
 $$;
 
@@ -243,7 +246,7 @@ $$;
 create or replace function public.login(
   p_username text,
   p_password text
-) returns table(token uuid, id uuid, username text, full_name text, role text)
+) returns table(token uuid, id uuid, username text, full_name text, role text, can_edit_booking_date boolean)
 language plpgsql
 security definer
 set search_path = public, extensions
@@ -261,18 +264,18 @@ begin
 
   insert into public.app_sessions(user_id) values (v_user.id) returning app_sessions.token into v_token;
 
-  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role;
+  return query select v_token, v_user.id, v_user.username, v_user.full_name, v_user.role, v_user.can_edit_booking_date;
 end;
 $$;
 
 -- Restore a session on page reload.
 create or replace function public.whoami(p_token uuid)
-returns table(id uuid, username text, full_name text, role text)
+returns table(id uuid, username text, full_name text, role text, can_edit_booking_date boolean)
 language sql
 security definer
 set search_path = public
 as $$
-  select u.id, u.username, u.full_name, u.role
+  select u.id, u.username, u.full_name, u.role, u.can_edit_booking_date
   from public._session_user(p_token) u;
 $$;
 
@@ -311,7 +314,8 @@ create or replace function public.admin_create_user(
   p_username text,
   p_password text,
   p_full_name text,
-  p_role text
+  p_role text,
+  p_can_edit_booking_date boolean
 ) returns public.app_users
 language plpgsql
 security definer
@@ -325,8 +329,8 @@ begin
   if v_caller is null or v_caller.role <> 'admin' then
     raise exception 'Not authorized';
   end if;
-  if p_role not in ('admin','sales') then
-    raise exception 'Role must be admin or sales';
+  if p_role not in ('admin','sales','site_head') then
+    raise exception 'Role must be admin, sales, or site_head';
   end if;
   if p_username is null or length(trim(p_username)) < 3 then
     raise exception 'Username must be at least 3 characters';
@@ -338,8 +342,8 @@ begin
     raise exception 'That username is already taken';
   end if;
 
-  insert into public.app_users(username, password_hash, full_name, role, active)
-  values (lower(trim(p_username)), extensions.crypt(p_password, extensions.gen_salt('bf')), p_full_name, p_role, true)
+  insert into public.app_users(username, password_hash, full_name, role, active, can_edit_booking_date)
+  values (lower(trim(p_username)), extensions.crypt(p_password, extensions.gen_salt('bf')), p_full_name, p_role, true, coalesce(p_can_edit_booking_date, false))
   returning * into v_new;
 
   insert into public.audit_log(action, performed_by, details)
@@ -349,13 +353,15 @@ begin
 end;
 $$;
 
--- Update a user's name / role / active flag (NOT password — use admin_reset_password for that).
+-- Update a user's name / designation (role) / active flag / permissions
+-- (NOT password — use admin_reset_password for that).
 create or replace function public.admin_update_user(
   p_token uuid,
   p_user_id uuid,
   p_full_name text,
   p_role text,
-  p_active boolean
+  p_active boolean,
+  p_can_edit_booking_date boolean
 ) returns public.app_users
 language plpgsql
 security definer
@@ -369,8 +375,8 @@ begin
   if v_caller is null or v_caller.role <> 'admin' then
     raise exception 'Not authorized';
   end if;
-  if p_role not in ('admin','sales') then
-    raise exception 'Role must be admin or sales';
+  if p_role not in ('admin','sales','site_head') then
+    raise exception 'Role must be admin, sales, or site_head';
   end if;
 
   select * into v_target from public.app_users where id = p_user_id;
@@ -386,7 +392,10 @@ begin
   end if;
 
   update public.app_users
-    set full_name = p_full_name, role = p_role, active = p_active
+    set full_name = p_full_name,
+        role = p_role,
+        active = p_active,
+        can_edit_booking_date = coalesce(p_can_edit_booking_date, false)
     where id = p_user_id
     returning * into v_target;
 
@@ -640,7 +649,12 @@ create or replace function public.book_flat(
   p_buyer_email text,
   p_agreement_value numeric,
   p_stamp_duty_rate numeric,
-  p_include_cc boolean
+  p_include_cc boolean,
+  p_amount_received numeric,
+  p_cp_name text,
+  p_cp_firm_name text,
+  p_cp_number text,
+  p_cp_email text
 ) returns public.bookings
 language plpgsql
 security definer
@@ -675,6 +689,9 @@ begin
   if p_include_cc and not v_flat.cc_enabled then
     raise exception 'Cash component is not enabled for this flat';
   end if;
+  if p_amount_received is not null and p_amount_received < 0 then
+    raise exception 'Amount received cannot be negative';
+  end if;
 
   update public.flats
     set status = 'Booked',
@@ -685,12 +702,14 @@ begin
 
   insert into public.bookings
     (flat_id, buyer_name, buyer_phone, buyer_email, agreement_value, stamp_duty_rate,
-     registration, cc_included, cc_amount, booked_by)
+     registration, cc_included, cc_amount, booked_by,
+     amount_received, cp_name, cp_firm_name, cp_number, cp_email)
   values
     (p_flat_id, p_buyer_name, p_buyer_phone, p_buyer_email, p_agreement_value, p_stamp_duty_rate,
      v_flat.registration, coalesce(p_include_cc,false),
      case when p_include_cc then v_flat.cc_amount else 0 end,
-     v_caller.id)
+     v_caller.id,
+     coalesce(p_amount_received, 0), p_cp_name, p_cp_firm_name, p_cp_number, p_cp_email)
   returning * into v_booking;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
@@ -746,17 +765,14 @@ begin
 end;
 $$;
 
--- Admin: edit the booking date, amount received so far, and Channel Partner
--- (CP) details on an existing booking. Does not touch pricing.
-create or replace function public.admin_update_booking_details(
+-- Edit ONLY a booking's date. Admin can always do this; a Site Head can only
+-- do this if admin has granted them the can_edit_booking_date permission.
+-- Amount received and CP details are captured once at booking time (see
+-- book_flat) and are not editable afterward.
+create or replace function public.update_booking_date(
   p_token uuid,
   p_booking_id uuid,
-  p_booked_at timestamptz,
-  p_amount_received numeric,
-  p_cp_name text,
-  p_cp_firm_name text,
-  p_cp_number text,
-  p_cp_email text
+  p_booked_at timestamptz
 ) returns public.bookings
 language plpgsql
 security definer
@@ -767,20 +783,18 @@ declare
   v_booking public.bookings;
 begin
   v_caller := public._session_user(p_token);
-  if v_caller is null or v_caller.role <> 'admin' then
-    raise exception 'Only admin can edit booking details';
+  if v_caller is null then
+    raise exception 'Not authenticated';
   end if;
-  if p_amount_received is not null and p_amount_received < 0 then
-    raise exception 'Amount received cannot be negative';
+  if v_caller.role <> 'admin' and not (v_caller.role = 'site_head' and v_caller.can_edit_booking_date) then
+    raise exception 'You do not have permission to edit the booking date';
+  end if;
+  if p_booked_at is null then
+    raise exception 'A booking date is required';
   end if;
 
   update public.bookings
-    set booked_at = coalesce(p_booked_at, booked_at),
-        amount_received = coalesce(p_amount_received, amount_received),
-        cp_name = p_cp_name,
-        cp_firm_name = p_cp_firm_name,
-        cp_number = p_cp_number,
-        cp_email = p_cp_email
+    set booked_at = p_booked_at
     where id = p_booking_id
     returning * into v_booking;
 
@@ -789,8 +803,8 @@ begin
   end if;
 
   insert into public.audit_log(flat_id, action, performed_by, details)
-    values (v_booking.flat_id, 'update_booking_details', v_caller.id,
-            jsonb_build_object('booking_id', p_booking_id, 'amount_received', p_amount_received));
+    values (v_booking.flat_id, 'update_booking_date', v_caller.id,
+            jsonb_build_object('booking_id', p_booking_id, 'new_booked_at', p_booked_at));
 
   return v_booking;
 end;
@@ -886,8 +900,8 @@ grant execute on function public.login(text, text) to anon;
 grant execute on function public.whoami(uuid) to anon;
 grant execute on function public.logout(uuid) to anon;
 grant execute on function public.admin_list_users(uuid) to anon;
-grant execute on function public.admin_create_user(uuid, text, text, text, text) to anon;
-grant execute on function public.admin_update_user(uuid, uuid, text, text, boolean) to anon;
+grant execute on function public.admin_create_user(uuid, text, text, text, text, boolean) to anon;
+grant execute on function public.admin_update_user(uuid, uuid, text, text, boolean, boolean) to anon;
 grant execute on function public.admin_reset_password(uuid, uuid, text) to anon;
 grant execute on function public.admin_delete_user(uuid, uuid) to anon;
 grant execute on function public.get_flats(uuid) to anon;
@@ -895,9 +909,9 @@ grant execute on function public.get_bookings(uuid) to anon;
 grant execute on function public.get_booking_for_flat(uuid, text) to anon;
 grant execute on function public.update_flat_pricing(uuid, text, numeric, numeric) to anon;
 grant execute on function public.set_flat_cc(uuid, text, boolean, numeric) to anon;
-grant execute on function public.book_flat(uuid, text, text, text, text, numeric, numeric, boolean) to anon;
+grant execute on function public.book_flat(uuid, text, text, text, text, numeric, numeric, boolean, numeric, text, text, text, text) to anon;
 grant execute on function public.cancel_booking(uuid, uuid, text) to anon;
-grant execute on function public.admin_update_booking_details(uuid, uuid, timestamptz, numeric, text, text, text, text) to anon;
+grant execute on function public.update_booking_date(uuid, uuid, timestamptz) to anon;
 grant execute on function public.admin_set_flat_unblock(uuid, text, boolean) to anon;
 
 -- ============================================================================

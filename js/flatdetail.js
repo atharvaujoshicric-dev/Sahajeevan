@@ -3,6 +3,10 @@
 
 let _detailFlat = null;
 
+function canEditBookingDate() {
+  return currentUser && (currentUser.role === "admin" || (currentUser.role === "site_head" && currentUser.can_edit_booking_date));
+}
+
 function renderPaymentScheduleTable(agreementValue) {
   const rows = PAYMENT_SLABS.map((row) => {
     const amount = Math.round(Number(agreementValue) * (row.percent / 100));
@@ -125,7 +129,7 @@ async function openFlatDetail(flat, isAdmin) {
       ` : ""}
 
       <button class="btn secondary" id="fd-print">Print Booking Sheet</button>
-      ${isAdmin ? `<button class="btn secondary" id="fd-edit-booking">Edit Booking</button>` : ""}
+      ${canEditBookingDate() ? `<button class="btn secondary" id="fd-edit-booking">Edit Booking Date</button>` : ""}
       ${isAdmin ? `<button class="btn danger" id="fd-cancel-booking">Cancel Booking</button>` : ""}
     ` : ""}
 
@@ -280,42 +284,29 @@ function openEditBookingForm(booking) {
   body.innerHTML = `
     <div class="detail-grid">
       <div><label>Booking Date &amp; Time</label><input type="datetime-local" id="eb-booked-at" value="${toDatetimeLocalValue(booking.booked_at)}" /></div>
-      <div><label>Amount Received</label><input type="number" id="eb-amount-received" value="${Number(booking.amount_received || 0)}" /></div>
     </div>
-    <h4 style="margin-top:14px;">Channel Partner (CP) Details</h4>
-    <div class="detail-grid">
-      <div><label>Name</label><input type="text" id="eb-cp-name" value="${escapeHtml(booking.cp_name || "")}" /></div>
-      <div><label>Firm Name</label><input type="text" id="eb-cp-firm" value="${escapeHtml(booking.cp_firm_name || "")}" /></div>
-      <div><label>Number</label><input type="text" id="eb-cp-number" value="${escapeHtml(booking.cp_number || "")}" /></div>
-      <div><label>Email</label><input type="email" id="eb-cp-email" value="${escapeHtml(booking.cp_email || "")}" /></div>
-    </div>
-    <button class="btn primary" id="eb-submit">Save Changes</button>
+    <p class="note">Only the booking date can be changed here. Amount received and Channel Partner details are set once at the time of booking and can't be edited afterward.</p>
+    <button class="btn primary" id="eb-submit">Save Date</button>
   `;
 
   document.getElementById("eb-submit").addEventListener("click", async () => {
     const bookedAtLocal = document.getElementById("eb-booked-at").value;
-    const amountReceived = Number(document.getElementById("eb-amount-received").value) || 0;
-    const cpName = document.getElementById("eb-cp-name").value.trim();
-    const cpFirm = document.getElementById("eb-cp-firm").value.trim();
-    const cpNumber = document.getElementById("eb-cp-number").value.trim();
-    const cpEmail = document.getElementById("eb-cp-email").value.trim();
+    if (!bookedAtLocal) {
+      toast("A booking date is required", "error");
+      return;
+    }
 
-    const { error } = await sb.rpc("admin_update_booking_details", {
+    const { error } = await sb.rpc("update_booking_date", {
       p_token: currentToken,
       p_booking_id: booking.id,
-      p_booked_at: bookedAtLocal ? new Date(bookedAtLocal).toISOString() : null,
-      p_amount_received: amountReceived,
-      p_cp_name: cpName || null,
-      p_cp_firm_name: cpFirm || null,
-      p_cp_number: cpNumber || null,
-      p_cp_email: cpEmail || null,
+      p_booked_at: new Date(bookedAtLocal).toISOString(),
     });
 
     if (error) {
       toast(error.message, "error");
       return;
     }
-    toast("Booking details updated");
+    toast("Booking date updated");
     closeModal("modal-booking-form");
     closeModal("modal-flat-detail");
     window.dispatchEvent(new Event("flats:refresh"));
@@ -347,9 +338,20 @@ function openBookingForm(flat, agreementValue, rate) {
       <div><label>Buyer Name *</label><input type="text" id="bk-name" required/></div>
       <div><label>Phone</label><input type="text" id="bk-phone"/></div>
       <div><label>Email</label><input type="email" id="bk-email"/></div>
+      <div><label>Booking Amount Received</label><input type="number" id="bk-amount-received" value="0" /></div>
     </div>
     ${ccOption}
     <div id="bk-figure-note">${figureNote(false)}</div>
+
+    <h4 style="margin-top:14px;">Channel Partner (CP) Details</h4>
+    <p class="note">Leave blank if this booking did not come through a channel partner.</p>
+    <div class="detail-grid">
+      <div><label>Name</label><input type="text" id="bk-cp-name" /></div>
+      <div><label>Firm Name</label><input type="text" id="bk-cp-firm" /></div>
+      <div><label>Number</label><input type="text" id="bk-cp-number" /></div>
+      <div><label>Email</label><input type="email" id="bk-cp-email" /></div>
+    </div>
+
     <button class="btn primary" id="bk-submit">Confirm Booking</button>
   `;
 
@@ -369,6 +371,11 @@ function openBookingForm(flat, agreementValue, rate) {
     const phone = document.getElementById("bk-phone").value.trim();
     const email = document.getElementById("bk-email").value.trim();
     const includeCc = document.getElementById("bk-cc") ? document.getElementById("bk-cc").checked : false;
+    const amountReceived = Number(document.getElementById("bk-amount-received").value) || 0;
+    const cpName = document.getElementById("bk-cp-name").value.trim();
+    const cpFirm = document.getElementById("bk-cp-firm").value.trim();
+    const cpNumber = document.getElementById("bk-cp-number").value.trim();
+    const cpEmail = document.getElementById("bk-cp-email").value.trim();
 
     const { error } = await sb.rpc("book_flat", {
       p_token: currentToken,
@@ -379,6 +386,11 @@ function openBookingForm(flat, agreementValue, rate) {
       p_agreement_value: agreementValue,
       p_stamp_duty_rate: rate,
       p_include_cc: includeCc,
+      p_amount_received: amountReceived,
+      p_cp_name: cpName || null,
+      p_cp_firm_name: cpFirm || null,
+      p_cp_number: cpNumber || null,
+      p_cp_email: cpEmail || null,
     });
 
     if (error) {

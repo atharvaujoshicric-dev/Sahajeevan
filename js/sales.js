@@ -2,6 +2,8 @@ let salesFlats = [];
 
 async function initSalesView() {
   document.getElementById("sales-username").textContent = currentUser.full_name || currentUser.username;
+  document.getElementById("sales-title").textContent =
+    "Sahjeevan Inventory — " + (currentUser.role === "site_head" ? "Site Head" : "Sales");
   await loadSalesFlats();
 
   document.getElementById("sales-search").oninput = (e) => {

@@ -181,8 +181,9 @@ async function loadUsers() {
     <tr>
       <td>${escapeHtml(u.username)}</td>
       <td>${escapeHtml(u.full_name || "-")}</td>
-      <td>${escapeHtml(u.role)}</td>
+      <td>${escapeHtml(roleLabel(u.role))}</td>
       <td>${u.active ? "Active" : "Deactivated"}</td>
+      <td>${u.role === "site_head" ? (u.can_edit_booking_date ? "Can edit booking date" : "-") : "-"}</td>
       <td>
         <button class="btn secondary small" data-edit="${u.id}">Edit</button>
         <button class="btn secondary small" data-reset="${u.id}">Reset Password</button>
@@ -211,14 +212,26 @@ async function loadUsers() {
       const u = users.find((x) => x.id === btn.dataset.edit);
       const fullName = prompt("Full name:", u.full_name || "");
       if (fullName === null) return;
-      const role = prompt("Role (admin/sales):", u.role);
-      if (role === null || !["admin", "sales"].includes(role)) {
-        if (role !== null) toast("Role must be 'admin' or 'sales'", "error");
+      const role = prompt("Designation (admin / sales / site_head):", u.role);
+      if (role === null || !["admin", "sales", "site_head"].includes(role)) {
+        if (role !== null) toast("Role must be 'admin', 'sales', or 'site_head'", "error");
         return;
       }
       const activeStr = prompt("Active? (yes/no):", u.active ? "yes" : "no");
       if (activeStr === null) return;
       const active = activeStr.trim().toLowerCase().startsWith("y");
+
+      let canEditBookingDate = u.can_edit_booking_date;
+      if (role === "site_head") {
+        const permStr = prompt(
+          "Allow this Site Head to edit booking dates? (yes/no):",
+          u.can_edit_booking_date ? "yes" : "no"
+        );
+        if (permStr === null) return;
+        canEditBookingDate = permStr.trim().toLowerCase().startsWith("y");
+      } else {
+        canEditBookingDate = false; // permission only applies to site_head
+      }
 
       const { error } = await sb.rpc("admin_update_user", {
         p_token: currentToken,
@@ -226,6 +239,7 @@ async function loadUsers() {
         p_full_name: fullName,
         p_role: role,
         p_active: active,
+        p_can_edit_booking_date: canEditBookingDate,
       });
       if (error) toast(error.message, "error");
       else {
@@ -252,12 +266,19 @@ async function loadUsers() {
   });
 }
 
+function roleLabel(role) {
+  if (role === "site_head") return "Site Head";
+  if (role === "admin") return "Admin";
+  return "Sales";
+}
+
 document.getElementById("create-user-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const username = document.getElementById("new-username").value.trim();
   const password = document.getElementById("new-password").value;
   const fullName = document.getElementById("new-fullname").value.trim();
   const role = document.getElementById("new-role").value;
+  const canEditBookingDate = document.getElementById("new-can-edit-booking-date").checked;
 
   const { error } = await sb.rpc("admin_create_user", {
     p_token: currentToken,
@@ -265,6 +286,7 @@ document.getElementById("create-user-form").addEventListener("submit", async (e)
     p_password: password,
     p_full_name: fullName,
     p_role: role,
+    p_can_edit_booking_date: role === "site_head" ? canEditBookingDate : false,
   });
 
   if (error) {

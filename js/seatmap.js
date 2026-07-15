@@ -11,6 +11,9 @@ function renderSeatMap(container, flats, onSelect) {
     towers[f.tower][f.floor_number].push(f);
   });
 
+  const towersRow = document.createElement("div");
+  towersRow.className = "towers-row";
+
   Object.keys(towers).sort().forEach((tower) => {
     const towerEl = document.createElement("div");
     towerEl.className = "tower-block";
@@ -52,8 +55,10 @@ function renderSeatMap(container, flats, onSelect) {
         towerEl.appendChild(row);
       });
 
-    container.appendChild(towerEl);
+    towersRow.appendChild(towerEl);
   });
+
+  container.appendChild(towersRow);
 
   const legend = document.createElement("div");
   legend.className = "legend";
