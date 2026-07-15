@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sahjeevan — Live Inventory System</title>
-<link rel="stylesheet" href="css/style.css?v=20260713h" />
+<link rel="stylesheet" href="css/style.css?v=20260713j" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -159,6 +159,10 @@
               <input type="checkbox" id="new-can-edit-booking-date" style="width:auto;" />
               Can edit booking dates (Site Head only)
             </label>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+              <input type="checkbox" id="new-can-edit-cp-details" style="width:auto;" />
+              Can edit Channel Partner details (Site Head only)
+            </label>
             <button class="btn primary" type="submit">Create Login</button>
           </form>
         </div>
@@ -220,15 +224,63 @@
   </div>
 </div>
 
-<script src="js/supabaseClient.js?v=20260713h"></script>
-<script src="js/utils.js?v=20260713h"></script>
-<script src="js/config.js?v=20260713h"></script>
-<script src="js/auth.js?v=20260713h"></script>
-<script src="js/seatmap.js?v=20260713h"></script>
-<script src="js/flatdetail.js?v=20260713h"></script>
-<script src="js/bookingSheet.js?v=20260713h"></script>
-<script src="js/sales.js?v=20260713h"></script>
-<script src="js/admin.js?v=20260713h"></script>
+<div class="modal-backdrop" id="modal-edit-user">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit User</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-user')">&times;</button>
+    </div>
+    <div id="edit-user-body"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-cancel-booking">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Cancel Booking</h3>
+      <button class="modal-close" onclick="closeModal('modal-cancel-booking')">&times;</button>
+    </div>
+    <label style="display:block; font-size:13px; color:#6b7280; margin-bottom:4px;">Reason for cancellation</label>
+    <textarea id="cancel-booking-reason" rows="3" style="width:100%; padding:9px 12px; border:1px solid #e5e7eb; border-radius:8px; font-family:inherit; font-size:14px;"></textarea>
+    <div class="error-text" id="cancel-booking-error"></div>
+    <button class="btn danger" id="cancel-booking-confirm-btn">Cancel This Booking</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-reset-password">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Reset Password</h3>
+      <button class="modal-close" onclick="closeModal('modal-reset-password')">&times;</button>
+    </div>
+    <p class="note" id="reset-password-target"></p>
+    <label style="display:block; font-size:13px; color:#6b7280; margin-bottom:4px;">New password (min 6 characters)</label>
+    <input type="text" id="reset-password-input" style="width:100%; padding:9px 12px; border:1px solid #e5e7eb; border-radius:8px;" />
+    <div class="error-text" id="reset-password-error"></div>
+    <button class="btn primary" id="reset-password-confirm-btn">Reset Password</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-confirm">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="confirm-modal-title">Are you sure?</h3>
+      <button class="modal-close" onclick="closeModal('modal-confirm')">&times;</button>
+    </div>
+    <p id="confirm-modal-message"></p>
+    <button class="btn danger" id="confirm-modal-btn">Confirm</button>
+  </div>
+</div>
+
+<script src="js/supabaseClient.js?v=20260713j"></script>
+<script src="js/utils.js?v=20260713j"></script>
+<script src="js/config.js?v=20260713j"></script>
+<script src="js/auth.js?v=20260713j"></script>
+<script src="js/seatmap.js?v=20260713j"></script>
+<script src="js/flatdetail.js?v=20260713j"></script>
+<script src="js/bookingSheet.js?v=20260713j"></script>
+<script src="js/sales.js?v=20260713j"></script>
+<script src="js/admin.js?v=20260713j"></script>
 <script>
   document.querySelectorAll(".login-logo").forEach((img) => { img.src = PROJECT_LOGO_PATH; });
   document.querySelectorAll(".brand-rera-qr").forEach((img) => { img.src = PROJECT_RERA_QR_PATH; });

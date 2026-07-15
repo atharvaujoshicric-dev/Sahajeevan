@@ -86,6 +86,16 @@ function openBookingSheet(flat, booking) {
               <td class="k">Email</td><td>${escapeHtml(booking.buyer_email || "-")}</td></tr>
         </table>
 
+        ${(booking.cp_name || booking.cp_firm_name || booking.cp_number || booking.cp_email) ? `
+          <h3>Channel Partner Details</h3>
+          <table class="info-table">
+            <tr><td class="k">Name</td><td>${escapeHtml(booking.cp_name || "-")}</td>
+                <td class="k">Firm Name</td><td>${escapeHtml(booking.cp_firm_name || "-")}</td></tr>
+            <tr><td class="k">Number</td><td>${escapeHtml(booking.cp_number || "-")}</td>
+                <td class="k">Email</td><td>${escapeHtml(booking.cp_email || "-")}</td></tr>
+          </table>
+        ` : ""}
+
         <h3>Pricing</h3>
         <table class="info-table">
           <tr><td class="k">Agreement Value</td><td>${formatINR(fig.agreementValue)}</td>
@@ -93,6 +103,7 @@ function openBookingSheet(flat, booking) {
           <tr><td class="k">Registration</td><td>${formatINR(fig.registration)}</td>
               <td class="k">GST (5%)</td><td>${formatINR(fig.gst)}</td></tr>
           <tr><td class="k">Package Total</td><td colspan="3"><strong>${formatINR(fig.packageTotal)}</strong></td></tr>
+          <tr><td class="k">Amount Received</td><td colspan="3">${formatINR(Number(booking.amount_received || 0))}</td></tr>
         </table>
 
         ${signatureBlock()}

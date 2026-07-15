@@ -146,22 +146,22 @@ function renderBookingsTable() {
     .join("");
 
   tbody.querySelectorAll("button[data-id]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const reason = prompt("Reason for cancellation:");
-      if (reason === null) return;
-      const { error } = await sb.rpc("cancel_booking", {
-        p_token: currentToken,
-        p_booking_id: btn.dataset.id,
-        p_reason: reason,
+    btn.addEventListener("click", () => {
+      openCancelBookingModal(async (reason) => {
+        const { error } = await sb.rpc("cancel_booking", {
+          p_token: currentToken,
+          p_booking_id: btn.dataset.id,
+          p_reason: reason,
+        });
+        if (error) {
+          toast(error.message, "error");
+        } else {
+          toast("Booking cancelled");
+          await refreshAdminData();
+          renderBookingsTable();
+          renderDashboard();
+        }
       });
-      if (error) {
-        toast(error.message, "error");
-      } else {
-        toast("Booking cancelled");
-        await refreshAdminData();
-        renderBookingsTable();
-        renderDashboard();
-      }
     });
   });
 }
@@ -183,7 +183,7 @@ async function loadUsers() {
       <td>${escapeHtml(u.full_name || "-")}</td>
       <td>${escapeHtml(roleLabel(u.role))}</td>
       <td>${u.active ? "Active" : "Deactivated"}</td>
-      <td>${u.role === "site_head" ? (u.can_edit_booking_date ? "Can edit booking date" : "-") : "-"}</td>
+      <td>${permissionsLabel(u)}</td>
       <td>
         <button class="btn secondary small" data-edit="${u.id}">Edit</button>
         <button class="btn secondary small" data-reset="${u.id}">Reset Password</button>
@@ -194,82 +194,126 @@ async function loadUsers() {
     .join("");
 
   tbody.querySelectorAll("button[data-reset]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const newPass = prompt("Enter new password (min 6 characters):");
-      if (!newPass) return;
-      const { error } = await sb.rpc("admin_reset_password", {
-        p_token: currentToken,
-        p_user_id: btn.dataset.reset,
-        p_new_password: newPass,
+    btn.addEventListener("click", () => {
+      const u = users.find((x) => x.id === btn.dataset.reset);
+      openResetPasswordModal(u.username, async (newPass) => {
+        const { error } = await sb.rpc("admin_reset_password", {
+          p_token: currentToken,
+          p_user_id: btn.dataset.reset,
+          p_new_password: newPass,
+        });
+        if (error) toast(error.message, "error");
+        else toast("Password reset. That user has been logged out everywhere.");
       });
-      if (error) toast(error.message, "error");
-      else toast("Password reset. That user has been logged out everywhere.");
     });
   });
 
   tbody.querySelectorAll("button[data-edit]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const u = users.find((x) => x.id === btn.dataset.edit);
-      const fullName = prompt("Full name:", u.full_name || "");
-      if (fullName === null) return;
-      const role = prompt("Designation (admin / sales / site_head):", u.role);
-      if (role === null || !["admin", "sales", "site_head"].includes(role)) {
-        if (role !== null) toast("Role must be 'admin', 'sales', or 'site_head'", "error");
-        return;
-      }
-      const activeStr = prompt("Active? (yes/no):", u.active ? "yes" : "no");
-      if (activeStr === null) return;
-      const active = activeStr.trim().toLowerCase().startsWith("y");
-
-      let canEditBookingDate = u.can_edit_booking_date;
-      if (role === "site_head") {
-        const permStr = prompt(
-          "Allow this Site Head to edit booking dates? (yes/no):",
-          u.can_edit_booking_date ? "yes" : "no"
-        );
-        if (permStr === null) return;
-        canEditBookingDate = permStr.trim().toLowerCase().startsWith("y");
-      } else {
-        canEditBookingDate = false; // permission only applies to site_head
-      }
-
-      const { error } = await sb.rpc("admin_update_user", {
-        p_token: currentToken,
-        p_user_id: u.id,
-        p_full_name: fullName,
-        p_role: role,
-        p_active: active,
-        p_can_edit_booking_date: canEditBookingDate,
-      });
-      if (error) toast(error.message, "error");
-      else {
-        toast("User updated");
-        loadUsers();
-      }
+      openEditUserForm(u);
     });
   });
 
   tbody.querySelectorAll("button[data-delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const u = users.find((x) => x.id === btn.dataset.delete);
-      if (!confirm(`Permanently delete the login "${u.username}"? This cannot be undone.`)) return;
-      const { error } = await sb.rpc("admin_delete_user", {
-        p_token: currentToken,
-        p_user_id: u.id,
-      });
-      if (error) toast(error.message, "error");
-      else {
-        toast("User deleted");
-        loadUsers();
-      }
+      openConfirmModal(
+        "Delete Login",
+        `Permanently delete the login "${u.username}"? This cannot be undone.`,
+        async () => {
+          const { error } = await sb.rpc("admin_delete_user", {
+            p_token: currentToken,
+            p_user_id: u.id,
+          });
+          if (error) toast(error.message, "error");
+          else {
+            toast("User deleted");
+            loadUsers();
+          }
+        }
+      );
     });
   });
+}
+
+function openEditUserForm(u) {
+  const body = document.getElementById("edit-user-body");
+  body.innerHTML = `
+    <label>Full Name</label>
+    <input type="text" id="eu-fullname" value="${escapeHtml(u.full_name || "")}" style="width:100%; padding:9px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-top:4px; margin-bottom:12px;" />
+
+    <label>Designation</label>
+    <select id="eu-role" style="width:100%; padding:9px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-top:4px; margin-bottom:12px;">
+      <option value="sales" ${u.role === "sales" ? "selected" : ""}>Sales</option>
+      <option value="site_head" ${u.role === "site_head" ? "selected" : ""}>Site Head</option>
+      <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
+    </select>
+
+    <label style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+      <input type="checkbox" id="eu-active" style="width:auto;" ${u.active ? "checked" : ""} />
+      Active
+    </label>
+
+    <div id="eu-permissions" style="${u.role === "site_head" ? "" : "display:none;"}">
+      <p class="note" style="margin-top:4px;">Permissions (Site Head only)</p>
+      <label style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+        <input type="checkbox" id="eu-perm-date" style="width:auto;" ${u.can_edit_booking_date ? "checked" : ""} />
+        Can edit booking dates
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+        <input type="checkbox" id="eu-perm-cp" style="width:auto;" ${u.can_edit_cp_details ? "checked" : ""} />
+        Can edit Channel Partner details
+      </label>
+    </div>
+
+    <button class="btn primary" id="eu-submit" style="margin-top:8px;">Save Changes</button>
+  `;
+
+  document.getElementById("eu-role").addEventListener("change", (e) => {
+    document.getElementById("eu-permissions").style.display = e.target.value === "site_head" ? "" : "none";
+  });
+
+  document.getElementById("eu-submit").addEventListener("click", async () => {
+    const fullName = document.getElementById("eu-fullname").value.trim();
+    const role = document.getElementById("eu-role").value;
+    const active = document.getElementById("eu-active").checked;
+    const permDate = role === "site_head" ? document.getElementById("eu-perm-date").checked : false;
+    const permCp = role === "site_head" ? document.getElementById("eu-perm-cp").checked : false;
+
+    const { error } = await sb.rpc("admin_update_user", {
+      p_token: currentToken,
+      p_user_id: u.id,
+      p_full_name: fullName,
+      p_role: role,
+      p_active: active,
+      p_can_edit_booking_date: permDate,
+      p_can_edit_cp_details: permCp,
+    });
+    if (error) {
+      toast(error.message, "error");
+      return;
+    }
+    toast("User updated");
+    closeModal("modal-edit-user");
+    loadUsers();
+  });
+
+  openModal("modal-edit-user");
 }
 
 function roleLabel(role) {
   if (role === "site_head") return "Site Head";
   if (role === "admin") return "Admin";
   return "Sales";
+}
+
+function permissionsLabel(u) {
+  if (u.role !== "site_head") return "-";
+  const perms = [];
+  if (u.can_edit_booking_date) perms.push("Booking date");
+  if (u.can_edit_cp_details) perms.push("CP details");
+  return perms.length ? "Can edit: " + perms.join(", ") : "-";
 }
 
 document.getElementById("create-user-form").addEventListener("submit", async (e) => {
@@ -279,6 +323,7 @@ document.getElementById("create-user-form").addEventListener("submit", async (e)
   const fullName = document.getElementById("new-fullname").value.trim();
   const role = document.getElementById("new-role").value;
   const canEditBookingDate = document.getElementById("new-can-edit-booking-date").checked;
+  const canEditCpDetails = document.getElementById("new-can-edit-cp-details").checked;
 
   const { error } = await sb.rpc("admin_create_user", {
     p_token: currentToken,
@@ -287,6 +332,7 @@ document.getElementById("create-user-form").addEventListener("submit", async (e)
     p_full_name: fullName,
     p_role: role,
     p_can_edit_booking_date: role === "site_head" ? canEditBookingDate : false,
+    p_can_edit_cp_details: role === "site_head" ? canEditCpDetails : false,
   });
 
   if (error) {

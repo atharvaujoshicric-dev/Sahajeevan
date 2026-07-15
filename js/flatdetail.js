@@ -7,6 +7,10 @@ function canEditBookingDate() {
   return currentUser && (currentUser.role === "admin" || (currentUser.role === "site_head" && currentUser.can_edit_booking_date));
 }
 
+function canEditCpDetails() {
+  return currentUser && (currentUser.role === "admin" || (currentUser.role === "site_head" && currentUser.can_edit_cp_details));
+}
+
 function renderPaymentScheduleTable(agreementValue) {
   const rows = PAYMENT_SLABS.map((row) => {
     const amount = Math.round(Number(agreementValue) * (row.percent / 100));
@@ -129,7 +133,7 @@ async function openFlatDetail(flat, isAdmin) {
       ` : ""}
 
       <button class="btn secondary" id="fd-print">Print Booking Sheet</button>
-      ${canEditBookingDate() ? `<button class="btn secondary" id="fd-edit-booking">Edit Booking Date</button>` : ""}
+      ${(canEditBookingDate() || canEditCpDetails()) ? `<button class="btn secondary" id="fd-edit-booking">Edit Booking</button>` : ""}
       ${isAdmin ? `<button class="btn danger" id="fd-cancel-booking">Cancel Booking</button>` : ""}
     ` : ""}
 
@@ -212,21 +216,21 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
 
   const cancelBtn = document.getElementById("fd-cancel-booking");
   if (cancelBtn) {
-    cancelBtn.addEventListener("click", async () => {
-      const reason = prompt("Reason for cancellation:");
-      if (reason === null) return;
-      const { error } = await sb.rpc("cancel_booking", {
-        p_token: currentToken,
-        p_booking_id: booking.id,
-        p_reason: reason,
+    cancelBtn.addEventListener("click", () => {
+      openCancelBookingModal(async (reason) => {
+        const { error } = await sb.rpc("cancel_booking", {
+          p_token: currentToken,
+          p_booking_id: booking.id,
+          p_reason: reason,
+        });
+        if (error) {
+          toast(error.message, "error");
+        } else {
+          toast("Booking cancelled, flat is Available again");
+          closeModal("modal-flat-detail");
+          window.dispatchEvent(new Event("flats:refresh"));
+        }
       });
-      if (error) {
-        toast(error.message, "error");
-      } else {
-        toast("Booking cancelled, flat is Available again");
-        closeModal("modal-flat-detail");
-        window.dispatchEvent(new Event("flats:refresh"));
-      }
     });
   }
 
@@ -280,33 +284,66 @@ function toDatetimeLocalValue(isoString) {
 
 function openEditBookingForm(booking) {
   const body = document.getElementById("booking-form-body");
+  const showDate = canEditBookingDate();
+  const showCp = canEditCpDetails();
 
   body.innerHTML = `
-    <div class="detail-grid">
-      <div><label>Booking Date &amp; Time</label><input type="datetime-local" id="eb-booked-at" value="${toDatetimeLocalValue(booking.booked_at)}" /></div>
-    </div>
-    <p class="note">Only the booking date can be changed here. Amount received and Channel Partner details are set once at the time of booking and can't be edited afterward.</p>
-    <button class="btn primary" id="eb-submit">Save Date</button>
+    ${showDate ? `
+      <div class="detail-grid">
+        <div><label>Booking Date &amp; Time</label><input type="datetime-local" id="eb-booked-at" value="${toDatetimeLocalValue(booking.booked_at)}" /></div>
+      </div>
+    ` : ""}
+    ${showCp ? `
+      <h4 style="margin-top:${showDate ? "14px" : "0"};">Channel Partner (CP) Details</h4>
+      <p class="note">Leave blank if this booking did not come through a channel partner.</p>
+      <div class="detail-grid">
+        <div><label>Name</label><input type="text" id="eb-cp-name" value="${escapeHtml(booking.cp_name || "")}" /></div>
+        <div><label>Firm Name</label><input type="text" id="eb-cp-firm" value="${escapeHtml(booking.cp_firm_name || "")}" /></div>
+        <div><label>Number</label><input type="text" id="eb-cp-number" value="${escapeHtml(booking.cp_number || "")}" /></div>
+        <div><label>Email</label><input type="email" id="eb-cp-email" value="${escapeHtml(booking.cp_email || "")}" /></div>
+      </div>
+    ` : ""}
+    <button class="btn primary" id="eb-submit">Save Changes</button>
   `;
 
   document.getElementById("eb-submit").addEventListener("click", async () => {
-    const bookedAtLocal = document.getElementById("eb-booked-at").value;
-    if (!bookedAtLocal) {
-      toast("A booking date is required", "error");
-      return;
+    if (showDate) {
+      const bookedAtLocal = document.getElementById("eb-booked-at").value;
+      if (!bookedAtLocal) {
+        toast("A booking date is required", "error");
+        return;
+      }
+      const { error } = await sb.rpc("update_booking_date", {
+        p_token: currentToken,
+        p_booking_id: booking.id,
+        p_booked_at: new Date(bookedAtLocal).toISOString(),
+      });
+      if (error) {
+        toast(error.message, "error");
+        return;
+      }
     }
 
-    const { error } = await sb.rpc("update_booking_date", {
-      p_token: currentToken,
-      p_booking_id: booking.id,
-      p_booked_at: new Date(bookedAtLocal).toISOString(),
-    });
-
-    if (error) {
-      toast(error.message, "error");
-      return;
+    if (showCp) {
+      const cpName = document.getElementById("eb-cp-name").value.trim();
+      const cpFirm = document.getElementById("eb-cp-firm").value.trim();
+      const cpNumber = document.getElementById("eb-cp-number").value.trim();
+      const cpEmail = document.getElementById("eb-cp-email").value.trim();
+      const { error } = await sb.rpc("update_booking_cp_details", {
+        p_token: currentToken,
+        p_booking_id: booking.id,
+        p_cp_name: cpName || null,
+        p_cp_firm_name: cpFirm || null,
+        p_cp_number: cpNumber || null,
+        p_cp_email: cpEmail || null,
+      });
+      if (error) {
+        toast(error.message, "error");
+        return;
+      }
     }
-    toast("Booking date updated");
+
+    toast("Booking updated");
     closeModal("modal-booking-form");
     closeModal("modal-flat-detail");
     window.dispatchEvent(new Event("flats:refresh"));
