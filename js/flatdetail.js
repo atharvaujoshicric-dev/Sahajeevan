@@ -119,7 +119,7 @@ async function openFlatDetail(flat, isAdmin) {
         <div><label>Booked On</label><div>${new Date(booking.booked_at).toLocaleString()}</div></div>
         <div><label>Package Paid</label><div>${formatINR(booking.package_total)}</div></div>
         ${isAdmin ? `<div><label>Furniture Cost</label><div>${booking.cc_included ? formatINR(booking.cc_amount) : "Not opted"}</div></div>` : ""}
-        ${isAdmin ? `<div><label>Amount Received</label><div>${formatINR(booking.amount_received || 0)}</div></div>` : ""}
+        ${isAdmin ? `<div><label>Booking Amount</label><div>${formatINR(booking.amount_received || 0)}</div></div>` : ""}
       </div>
 
       ${isAdmin && (booking.cp_name || booking.cp_firm_name || booking.cp_number || booking.cp_email) ? `
@@ -375,7 +375,7 @@ function openBookingForm(flat, agreementValue, rate) {
       <div><label>Buyer Name *</label><input type="text" id="bk-name" required/></div>
       <div><label>Phone</label><input type="text" id="bk-phone"/></div>
       <div><label>Email</label><input type="email" id="bk-email"/></div>
-      <div><label>Booking Amount Received</label><input type="number" id="bk-amount-received" value="0" /></div>
+      <div><label>Booking Amount</label><input type="number" id="bk-amount-received" value="0" /></div>
     </div>
     ${ccOption}
     <div id="bk-figure-note">${figureNote(false)}</div>

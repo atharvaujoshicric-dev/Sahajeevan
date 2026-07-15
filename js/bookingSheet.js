@@ -103,7 +103,7 @@ function openBookingSheet(flat, booking) {
           <tr><td class="k">Registration</td><td>${formatINR(fig.registration)}</td>
               <td class="k">GST (5%)</td><td>${formatINR(fig.gst)}</td></tr>
           <tr><td class="k">Package Total</td><td colspan="3"><strong>${formatINR(fig.packageTotal)}</strong></td></tr>
-          <tr><td class="k">Amount Received</td><td colspan="3">${formatINR(Number(booking.amount_received || 0))}</td></tr>
+          <tr><td class="k">Booking Amount</td><td colspan="3">${formatINR(Number(booking.amount_received || 0))}</td></tr>
         </table>
 
         ${signatureBlock()}

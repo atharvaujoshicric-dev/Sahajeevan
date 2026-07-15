@@ -419,7 +419,7 @@ document.getElementById("export-excel-btn").addEventListener("click", () => {
       Registration: b.registration,
       GST: b.gst,
       "Package Total": b.package_total,
-      "Amount Received": b.amount_received,
+      "Booking Amount": b.amount_received,
       "CP Name": b.cp_name || "",
       "CP Firm Name": b.cp_firm_name || "",
       "CP Number": b.cp_number || "",
