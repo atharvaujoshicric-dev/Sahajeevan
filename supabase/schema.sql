@@ -125,6 +125,13 @@ create table if not exists public.bookings (
   booked_by uuid references public.app_users(id),
   booked_at timestamptz not null default now(),
 
+  -- Admin-editable extras
+  amount_received numeric not null default 0,
+  cp_name text,
+  cp_firm_name text,
+  cp_number text,
+  cp_email text,
+
   cancelled_by uuid references public.app_users(id),
   cancelled_at timestamptz,
   cancellation_reason text
@@ -485,6 +492,7 @@ returns table (
   stamp_duty numeric, gst numeric, package_total numeric,
   cc_included boolean, cc_amount numeric, status text,
   booked_by uuid, booked_by_name text, booked_at timestamptz,
+  amount_received numeric, cp_name text, cp_firm_name text, cp_number text, cp_email text,
   cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
   tower text, unit_no text, configuration_type text
 )
@@ -502,6 +510,7 @@ begin
            b.stamp_duty, b.gst, b.package_total,
            b.cc_included, b.cc_amount, b.status,
            b.booked_by, coalesce(u.full_name, u.username, 'Unknown') as booked_by_name, b.booked_at,
+           b.amount_received, b.cp_name, b.cp_firm_name, b.cp_number, b.cp_email,
            b.cancelled_by, b.cancelled_at, b.cancellation_reason,
            f.tower, f.unit_no, f.configuration_type
     from public.bookings b
@@ -737,6 +746,56 @@ begin
 end;
 $$;
 
+-- Admin: edit the booking date, amount received so far, and Channel Partner
+-- (CP) details on an existing booking. Does not touch pricing.
+create or replace function public.admin_update_booking_details(
+  p_token uuid,
+  p_booking_id uuid,
+  p_booked_at timestamptz,
+  p_amount_received numeric,
+  p_cp_name text,
+  p_cp_firm_name text,
+  p_cp_number text,
+  p_cp_email text
+) returns public.bookings
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller public.app_users;
+  v_booking public.bookings;
+begin
+  v_caller := public._session_user(p_token);
+  if v_caller is null or v_caller.role <> 'admin' then
+    raise exception 'Only admin can edit booking details';
+  end if;
+  if p_amount_received is not null and p_amount_received < 0 then
+    raise exception 'Amount received cannot be negative';
+  end if;
+
+  update public.bookings
+    set booked_at = coalesce(p_booked_at, booked_at),
+        amount_received = coalesce(p_amount_received, amount_received),
+        cp_name = p_cp_name,
+        cp_firm_name = p_cp_firm_name,
+        cp_number = p_cp_number,
+        cp_email = p_cp_email
+    where id = p_booking_id
+    returning * into v_booking;
+
+  if v_booking is null then
+    raise exception 'Booking not found';
+  end if;
+
+  insert into public.audit_log(flat_id, action, performed_by, details)
+    values (v_booking.flat_id, 'update_booking_details', v_caller.id,
+            jsonb_build_object('booking_id', p_booking_id, 'amount_received', p_amount_received));
+
+  return v_booking;
+end;
+$$;
+
 -- Wipes all bookings and returns every flat to Available, with CC cleared.
 -- Does NOT touch logins (app_users) — only transactional inventory data.
 create or replace function public.admin_reset_system_data(
@@ -838,6 +897,7 @@ grant execute on function public.update_flat_pricing(uuid, text, numeric, numeri
 grant execute on function public.set_flat_cc(uuid, text, boolean, numeric) to anon;
 grant execute on function public.book_flat(uuid, text, text, text, text, numeric, numeric, boolean) to anon;
 grant execute on function public.cancel_booking(uuid, uuid, text) to anon;
+grant execute on function public.admin_update_booking_details(uuid, uuid, timestamptz, numeric, text, text, text, text) to anon;
 grant execute on function public.admin_set_flat_unblock(uuid, text, boolean) to anon;
 
 -- ============================================================================

@@ -99,7 +99,7 @@ async function openFlatDetail(flat, isAdmin) {
       <button class="btn secondary" id="fd-save-cc">Save Furniture Cost</button>
     ` : ""}
 
-    ${isAdmin && canEditPricing ? `<button class="btn secondary" id="fd-save-pricing">Save Pricing Changes</button>` : ""}
+    ${canEditPricing ? `<p class="note">Agreement Value, Stamp Duty Rate, and Package Total above only affect this booking — use them to work out a negotiated price, then click "Book This Flat" to lock it in. There's no separate button to overwrite the flat's listed price, so a stray edit here can't accidentally change it for anyone else.</p>` : ""}
 
     ${booking ? `
       <hr/>
@@ -111,8 +111,21 @@ async function openFlatDetail(flat, isAdmin) {
         <div><label>Booked On</label><div>${new Date(booking.booked_at).toLocaleString()}</div></div>
         <div><label>Package Paid</label><div>${formatINR(booking.package_total)}</div></div>
         ${isAdmin ? `<div><label>Furniture Cost</label><div>${booking.cc_included ? formatINR(booking.cc_amount) : "Not opted"}</div></div>` : ""}
+        ${isAdmin ? `<div><label>Amount Received</label><div>${formatINR(booking.amount_received || 0)}</div></div>` : ""}
       </div>
+
+      ${isAdmin && (booking.cp_name || booking.cp_firm_name || booking.cp_number || booking.cp_email) ? `
+        <h4 style="margin-top:16px;">Channel Partner</h4>
+        <div class="detail-grid">
+          <div><label>Name</label><div>${escapeHtml(booking.cp_name || "-")}</div></div>
+          <div><label>Firm Name</label><div>${escapeHtml(booking.cp_firm_name || "-")}</div></div>
+          <div><label>Number</label><div>${escapeHtml(booking.cp_number || "-")}</div></div>
+          <div><label>Email</label><div>${escapeHtml(booking.cp_email || "-")}</div></div>
+        </div>
+      ` : ""}
+
       <button class="btn secondary" id="fd-print">Print Booking Sheet</button>
+      ${isAdmin ? `<button class="btn secondary" id="fd-edit-booking">Edit Booking</button>` : ""}
       ${isAdmin ? `<button class="btn danger" id="fd-cancel-booking">Cancel Booking</button>` : ""}
     ` : ""}
 
@@ -158,25 +171,6 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
   if (pkgInput) pkgInput.addEventListener("input", refreshFromPackage);
   rateRadios.forEach((r) => r.addEventListener("change", refreshFromAV));
 
-  const savePricingBtn = document.getElementById("fd-save-pricing");
-  if (savePricingBtn) {
-    savePricingBtn.addEventListener("click", async () => {
-      const { error } = await sb.rpc("update_flat_pricing", {
-        p_token: currentToken,
-        p_flat_id: flat.id,
-        p_agreement_value: Number(avInput.value),
-        p_stamp_duty_rate: currentRate(),
-      });
-      if (error) {
-        toast(error.message, "error");
-      } else {
-        toast("Pricing updated");
-        closeModal("modal-flat-detail");
-        window.dispatchEvent(new Event("flats:refresh"));
-      }
-    });
-  }
-
   const saveCcBtn = document.getElementById("fd-save-cc");
   if (saveCcBtn) {
     saveCcBtn.addEventListener("click", async () => {
@@ -202,6 +196,13 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
   if (bookBtn) {
     bookBtn.addEventListener("click", () => {
       openBookingForm(flat, Number(avInput.value), currentRate());
+    });
+  }
+
+  const editBookingBtn = document.getElementById("fd-edit-booking");
+  if (editBookingBtn) {
+    editBookingBtn.addEventListener("click", () => {
+      openEditBookingForm(booking);
     });
   }
 
@@ -265,6 +266,62 @@ function wireFlatDetailEvents(flat, booking, isAdmin) {
       }
     });
   }
+}
+
+function toDatetimeLocalValue(isoString) {
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openEditBookingForm(booking) {
+  const body = document.getElementById("booking-form-body");
+
+  body.innerHTML = `
+    <div class="detail-grid">
+      <div><label>Booking Date &amp; Time</label><input type="datetime-local" id="eb-booked-at" value="${toDatetimeLocalValue(booking.booked_at)}" /></div>
+      <div><label>Amount Received</label><input type="number" id="eb-amount-received" value="${Number(booking.amount_received || 0)}" /></div>
+    </div>
+    <h4 style="margin-top:14px;">Channel Partner (CP) Details</h4>
+    <div class="detail-grid">
+      <div><label>Name</label><input type="text" id="eb-cp-name" value="${escapeHtml(booking.cp_name || "")}" /></div>
+      <div><label>Firm Name</label><input type="text" id="eb-cp-firm" value="${escapeHtml(booking.cp_firm_name || "")}" /></div>
+      <div><label>Number</label><input type="text" id="eb-cp-number" value="${escapeHtml(booking.cp_number || "")}" /></div>
+      <div><label>Email</label><input type="email" id="eb-cp-email" value="${escapeHtml(booking.cp_email || "")}" /></div>
+    </div>
+    <button class="btn primary" id="eb-submit">Save Changes</button>
+  `;
+
+  document.getElementById("eb-submit").addEventListener("click", async () => {
+    const bookedAtLocal = document.getElementById("eb-booked-at").value;
+    const amountReceived = Number(document.getElementById("eb-amount-received").value) || 0;
+    const cpName = document.getElementById("eb-cp-name").value.trim();
+    const cpFirm = document.getElementById("eb-cp-firm").value.trim();
+    const cpNumber = document.getElementById("eb-cp-number").value.trim();
+    const cpEmail = document.getElementById("eb-cp-email").value.trim();
+
+    const { error } = await sb.rpc("admin_update_booking_details", {
+      p_token: currentToken,
+      p_booking_id: booking.id,
+      p_booked_at: bookedAtLocal ? new Date(bookedAtLocal).toISOString() : null,
+      p_amount_received: amountReceived,
+      p_cp_name: cpName || null,
+      p_cp_firm_name: cpFirm || null,
+      p_cp_number: cpNumber || null,
+      p_cp_email: cpEmail || null,
+    });
+
+    if (error) {
+      toast(error.message, "error");
+      return;
+    }
+    toast("Booking details updated");
+    closeModal("modal-booking-form");
+    closeModal("modal-flat-detail");
+    window.dispatchEvent(new Event("flats:refresh"));
+  });
+
+  openModal("modal-booking-form");
 }
 
 function openBookingForm(flat, agreementValue, rate) {
